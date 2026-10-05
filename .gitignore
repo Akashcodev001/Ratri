@@ -57,3 +57,6 @@ Thumbs.db
 # Temporary & Local Tool Files
 .cache/
 .gemini/
+
+# Documentation & Internal Notes
+docs/
