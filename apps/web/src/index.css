@@ -166,3 +166,21 @@
   }
 }
 
+/* Hide all scrollbars globally (Webkit, Firefox, IE/Edge) while retaining scroll functionality */
+::-webkit-scrollbar,
+*::-webkit-scrollbar,
+body::-webkit-scrollbar,
+main::-webkit-scrollbar,
+aside::-webkit-scrollbar,
+div::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  background: transparent !important;
+}
+
+html, body, *, .no-scrollbar {
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
+}
+

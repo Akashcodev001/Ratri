@@ -1125,7 +1125,7 @@ export function Room() {
       <div className="flex-1 flex overflow-hidden relative">
         
         {/* Stage Container */}
-        <main className="flex-1 flex flex-col p-4 overflow-y-auto justify-between bg-[hsl(var(--surface-sunken))] relative">
+        <main className="flex-1 flex flex-col p-4 overflow-y-auto no-scrollbar justify-between bg-[hsl(var(--surface-sunken))] relative">
           
           {/* Top Video Link Control Bar */}
           <form onSubmit={handleLoadVideo} className="mb-3 flex gap-2">
@@ -1470,7 +1470,7 @@ export function Room() {
             </div>
             
             {/* Real-time Participant List */}
-            <div className="p-3 border-b border-[hsl(var(--border))] max-h-32 overflow-y-auto space-y-1.5">
+            <div className="p-3 border-b border-[hsl(var(--border))] max-h-32 overflow-y-auto space-y-1.5 no-scrollbar">
               {participants.map((p) => (
                 <div key={p.id} className="flex items-center justify-between px-2 py-1 rounded bg-[hsl(var(--surface-elevated))] text-xs">
                   <div className="flex items-center gap-2">
@@ -1487,7 +1487,7 @@ export function Room() {
             </div>
 
             {/* Chat Messages */}
-            <div className="flex-1 p-3 overflow-y-auto space-y-2.5">
+            <div className="flex-1 p-3 overflow-y-auto space-y-2.5 no-scrollbar">
               <div className="text-[10px] font-bold uppercase tracking-wider text-[hsl(var(--text-muted))] mb-1">
                 Live Chat
               </div>
