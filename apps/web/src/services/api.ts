@@ -2,9 +2,10 @@ const getApiUrl = () => {
   if (import.meta.env.VITE_API_URL) {
     return import.meta.env.VITE_API_URL;
   }
-  const hostname = typeof window !== 'undefined' && window.location ? window.location.hostname : 'localhost';
-  const protocol = typeof window !== 'undefined' && window.location ? window.location.protocol : 'http:';
-  return `${protocol}//${hostname}:3000/v1`;
+  if (typeof window !== 'undefined' && window.location) {
+    return `${window.location.origin}/v1`;
+  }
+  return '/v1';
 };
 
 const API_URL = getApiUrl();

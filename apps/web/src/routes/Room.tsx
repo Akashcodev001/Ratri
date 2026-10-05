@@ -3,6 +3,9 @@ import { useParams } from "react-router-dom";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { ParticipantTile } from "../components/ParticipantTile";
+import { ParticipantPopover } from "../components/ParticipantPopover";
+import { GameStage } from "../components/GameStage";
+import type { RoomMode, GameSession, RoomStatePayload, Participant } from "@ratri/types";
 import { 
   Copy, 
   LogOut, 
@@ -22,6 +25,9 @@ import {
   X,
   Link as LinkIcon,
   GripHorizontal,
+  Gamepad2,
+  Pin,
+  Sparkles,
 } from "lucide-react";
 import { io, Socket } from "socket.io-client";
 
@@ -30,16 +36,6 @@ declare global {
     YT: any;
     onYouTubeIframeAPIReady: any;
   }
-}
-
-interface Participant {
-  id: string;
-  socketId: string;
-  name: string;
-  isHost: boolean;
-  micOn: boolean;
-  videoOn: boolean;
-  isScreenSharing?: boolean;
 }
 
 interface ChatMessage {
@@ -78,9 +74,7 @@ const getSocketUrl = () => {
     return import.meta.env.VITE_SOCKET_URL;
   }
   if (typeof window !== 'undefined' && window.location) {
-    const hostname = window.location.hostname || 'localhost';
-    const protocol = window.location.protocol || 'http:';
-    return `${protocol}//${hostname}:3000`;
+    return window.location.origin;
   }
   return "http://localhost:3000";
 };
@@ -178,7 +172,13 @@ function DraggablePip({ children, initialClass, label, style }: DraggablePipProp
 export function Room() {
   const { roomCode } = useParams();
   
-  // Realtime & Media States
+  // Realtime & Mode States
+  const [roomMode, setRoomMode] = useState<RoomMode>("VC");
+  const [activeGameSession, setActiveGameSession] = useState<GameSession | undefined>(undefined);
+  const [pinnedSocketId, setPinnedSocketId] = useState<string | null>(null);
+  const [popoverParticipant, setPopoverParticipant] = useState<Participant | null>(null);
+  const [expandedParticipant, setExpandedParticipant] = useState<Participant | null>(null);
+
   const [copied, setCopied] = useState(false);
   const [micOn, setMicOn] = useState(false);
   const [videoOn, setVideoOn] = useState(false);
@@ -207,7 +207,6 @@ export function Room() {
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [speakingSocketIds, setSpeakingSocketIds] = useState<Set<string>>(new Set());
 
-  
   // Refs
   const socketRef = useRef<Socket | null>(null);
   const screenVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -286,7 +285,7 @@ export function Room() {
     }
   }, [micOn]);
 
-  // Prompt before unloading or refreshing browser tab while in room
+  // Prompt before unloading browser tab while in room
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       e.preventDefault();
@@ -305,7 +304,6 @@ export function Room() {
     }, 3200);
   };
 
-  // Helper to ensure local media stream exists
   const ensureMediaStream = async (withVideo = false): Promise<MediaStream> => {
     let stream = mediaStreamRef.current;
     if (stream) {
@@ -339,7 +337,7 @@ export function Room() {
     }
   }, []);
 
-  // Initialize YouTube YT.Player Instance safely using isolated container
+  // Initialize YouTube YT.Player Instance safely
   const activeYtId = extractYouTubeId(activeVideoUrl);
   useEffect(() => {
     if (!activeYtId) return;
@@ -372,7 +370,6 @@ export function Room() {
               },
               onStateChange: (event: any) => {
                 if (isRemoteActionRef.current) return;
-                // 1 = PLAYING, 2 = PAUSED
                 if (event.data === window.YT.PlayerState.PLAYING) {
                   setIsPlaying(true);
                   const curTime = event.target.getCurrentTime();
@@ -417,7 +414,7 @@ export function Room() {
     };
   }, [activeYtId]);
 
-  // Initialize Socket.IO connection & WebRTC listeners
+  // Initialize Socket.IO connection & Server-Authoritative State Sync
   useEffect(() => {
     if (!roomCode) return;
     const code = roomCode.toUpperCase();
@@ -449,12 +446,49 @@ export function Room() {
       emitJoinRoom();
     });
 
+    // Server Authoritative Room Mode & State Change Handler
+    socket.on("room_mode_changed", (data: RoomStatePayload) => {
+      if (data.mode) {
+        setRoomMode(data.mode);
+      }
+      if (data.videoUrl) {
+        setActiveVideoUrl(data.videoUrl);
+        setVideoUrlInput(data.videoUrl);
+      }
+      if (typeof data.isPlaying === 'boolean') {
+        setIsPlaying(data.isPlaying);
+      }
+      if (typeof data.currentTime === 'number') {
+        setCurrentTime(data.currentTime);
+      }
+      if (data.activePresenterSocketId) {
+        setRemotePresenterSocketId(data.activePresenterSocketId);
+        setRemoteScreenActive(true);
+      }
+      if (data.activePresenterName) {
+        setRemotePresenterName(data.activePresenterName);
+      }
+      if (data.activeGame) {
+        setActiveGameSession(data.activeGame);
+      }
+    });
+
+    socket.on("media_stopped", () => {
+      setActiveVideoUrl("");
+      setVideoUrlInput("");
+      setIsPlaying(false);
+      setRemoteScreenActive(false);
+      setRemotePresenterSocketId(null);
+      setActiveGameSession(undefined);
+      setRoomMode("VC");
+      showToast("⏹️ Media stopped — returned to VC mode");
+    });
+
     socket.on("room_participants", async (updatedParticipants: Participant[]) => {
       setParticipants(updatedParticipants);
       const hasAnyRemoteVideo = updatedParticipants.some(p => p.socketId !== socket.id && p.videoOn);
       setRemoteVideoActive(hasAnyRemoteVideo);
 
-      // Auto-establish WebRTC peer connection for all connected remote users
       for (const p of updatedParticipants) {
         if (p.socketId !== socket.id && !peerConnectionsRef.current.has(p.socketId)) {
           const peer = createPeerConnection(p.socketId);
@@ -463,15 +497,6 @@ export function Room() {
           socket.emit("webrtc_offer", { targetSocketId: p.socketId, offer });
         }
       }
-    });
-
-    socket.on("sync_video_state", (state: { videoUrl: string; isPlaying: boolean; currentTime: number }) => {
-      if (state.videoUrl) {
-        setActiveVideoUrl(state.videoUrl);
-        setVideoUrlInput(state.videoUrl);
-      }
-      setIsPlaying(state.isPlaying);
-      setCurrentTime(state.currentTime);
     });
 
     socket.on("user_joined", async (user: Participant) => {
@@ -529,8 +554,6 @@ export function Room() {
 
     socket.on("new_message", (msg: ChatMessage) => {
       setMessages(prev => [...prev, msg]);
-
-      // If chat drawer is closed, increment unread count & show toast
       if (!showChatRef.current) {
         setUnreadCount(prev => prev + 1);
         if (msg.senderId !== socket.id && !msg.system) {
@@ -553,11 +576,11 @@ export function Room() {
       if (videoUrl) {
         setActiveVideoUrl(videoUrl);
         setVideoUrlInput(videoUrl);
+        setRoomMode("WATCH");
         showToast("🎬 Video stream updated & synced");
       }
     });
 
-    // Synchronized Player Actions (Play, Pause, Seek)
     socket.on("player_action", ({ action, currentTime: time }: { action: 'play' | 'pause' | 'seek'; currentTime?: number }) => {
       isRemoteActionRef.current = true;
       const ytPlayer = ytPlayerRef.current;
@@ -567,19 +590,13 @@ export function Room() {
           if (typeof time === 'number') {
             try { ytPlayer.seekTo(time, true); } catch (e) {}
           }
-          try {
-            ytPlayer.playVideo();
-          } catch (e) {
-            console.error("YT Play error", e);
-          }
+          try { ytPlayer.playVideo(); } catch (e) {}
           setIsPlaying(true);
         } else if (action === 'pause') {
           if (typeof time === 'number') {
             try { ytPlayer.seekTo(time, true); } catch (e) {}
           }
-          try {
-            ytPlayer.pauseVideo();
-          } catch (e) {}
+          try { ytPlayer.pauseVideo(); } catch (e) {}
           setIsPlaying(false);
         } else if (action === 'seek' && typeof time === 'number') {
           try { ytPlayer.seekTo(time, true); } catch (e) {}
@@ -611,8 +628,6 @@ export function Room() {
         isRemoteActionRef.current = false;
       }, 400);
     });
-
-    /* --- WebRTC Signaling Relays --- */
 
     socket.on("webrtc_offer", async ({ senderSocketId, offer }: { senderSocketId: string; offer: any }) => {
       try {
@@ -662,8 +677,10 @@ export function Room() {
       setRemoteScreenActive(isSharing);
       if (isSharing) {
         setRemotePresenterSocketId(senderSocketId);
+        setRoomMode("SCREEN_SHARE");
       } else {
         setRemotePresenterSocketId(null);
+        setRoomMode("VC");
       }
       const presenter = participants.find(p => p.socketId === senderSocketId);
       if (presenter) {
@@ -680,7 +697,6 @@ export function Room() {
     };
   }, [roomCode]);
 
-  // Create WebRTC Peer Connection with Track Listener
   const createPeerConnection = (targetSocketId: string): RTCPeerConnection => {
     if (peerConnectionsRef.current.has(targetSocketId)) {
       return peerConnectionsRef.current.get(targetSocketId)!;
@@ -736,20 +752,29 @@ export function Room() {
     peerConnectionsRef.current.clear();
   };
 
-  // Video Element Mount Hooks
-  useEffect(() => {
-    if (isScreenSharing && screenVideoRef.current && screenStreamRef.current) {
-      screenVideoRef.current.srcObject = screenStreamRef.current;
-      screenVideoRef.current.play().catch(err => console.error("Error playing screen feed", err));
+  // Helper to Stop Active Shared Media & Return to VC Mode
+  const handleStopActiveMedia = () => {
+    if (socketRef.current && roomCode) {
+      socketRef.current.emit("stop_media", { roomCode });
     }
-  }, [isScreenSharing]);
+    setActiveVideoUrl("");
+    setVideoUrlInput("");
+    setIsPlaying(false);
+    if (isScreenSharing) {
+      stopScreenShare();
+    }
+    setActiveGameSession(undefined);
+    setRoomMode("VC");
+    showToast("⏹️ Media stopped — returned to VC mode");
+  };
 
-  // Video Load & Player Synchronization
+  // Video Load & Synchronization
   const handleLoadVideo = (e: React.FormEvent) => {
     e.preventDefault();
     if (videoUrlInput.trim()) {
       const url = videoUrlInput.trim();
       setActiveVideoUrl(url);
+      setRoomMode("WATCH");
       const ytId = extractYouTubeId(url);
       showToast("🎬 Video URL updated & synced to room");
       if (socketRef.current && roomCode) {
@@ -822,14 +847,13 @@ export function Room() {
     }
   };
 
-  // Handle Camera & Mic Toggles (Instant replaceTrack WebRTC execution & Hardware Termination)
+  // Camera & Mic Toggles
   const toggleCamera = async () => {
     try {
       const nextVideo = !videoOn;
       setVideoOn(nextVideo);
 
       if (!nextVideo) {
-        // Physical Camera Hardware Termination: stop all video tracks to turn OFF laptop camera LED light
         if (mediaStreamRef.current) {
           const videoTracks = mediaStreamRef.current.getVideoTracks();
           videoTracks.forEach(track => {
@@ -843,7 +867,6 @@ export function Room() {
         mediaStreamRef.current = updatedStream;
         setLocalStream(updatedStream);
 
-        // Inform WebRTC peer connections
         for (const [, peer] of peerConnectionsRef.current.entries()) {
           const senders = peer.getSenders();
           const videoSender = senders.find(s => s.track?.kind === "video");
@@ -852,7 +875,6 @@ export function Room() {
           }
         }
       } else {
-        // Physical Camera Hardware Activation: request fresh video stream from hardware
         const vStream = await navigator.mediaDevices.getUserMedia({ video: true });
         const newVideoTrack = vStream.getVideoTracks()[0];
 
@@ -866,7 +888,6 @@ export function Room() {
         mediaStreamRef.current = updatedStream;
         setLocalStream(updatedStream);
 
-        // Relay live camera track to WebRTC peers
         for (const [targetSocketId, peer] of peerConnectionsRef.current.entries()) {
           const senders = peer.getSenders();
           const videoSender = senders.find(s => s.track?.kind === "video");
@@ -893,11 +914,7 @@ export function Room() {
       }
     } catch (err: any) {
       console.error("Camera access error", err);
-      if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
-        alert("Camera access was blocked. Please allow camera permissions in your browser settings.");
-      } else {
-        alert("Unable to access camera: " + (err.message || "Unknown error"));
-      }
+      alert("Unable to access camera: " + (err.message || "Unknown error"));
     }
   };
 
@@ -912,17 +929,12 @@ export function Room() {
         audioTrack.enabled = nextMic;
       }
 
-      for (const [targetSocketId, peer] of peerConnectionsRef.current.entries()) {
+      for (const [, peer] of peerConnectionsRef.current.entries()) {
         const senders = peer.getSenders();
         const audioSender = senders.find(s => s.track?.kind === "audio");
 
         if (audioSender && audioTrack) {
           await audioSender.replaceTrack(nextMic ? audioTrack : null);
-        } else if (audioTrack) {
-          peer.addTrack(audioTrack, stream);
-          const offer = await peer.createOffer();
-          await peer.setLocalDescription(offer);
-          socketRef.current?.emit("webrtc_offer", { targetSocketId, offer });
         }
       }
 
@@ -941,7 +953,7 @@ export function Room() {
     }
   };
 
-  // Handle Screen Sharing & WebRTC Broadcast to Peers
+  // Screen Sharing
   const toggleScreenShare = async () => {
     if (isScreenSharing) {
       stopScreenShare();
@@ -953,10 +965,8 @@ export function Room() {
           audio: true,
         });
         screenStreamRef.current = stream;
-        if (screenVideoRef.current) {
-          screenVideoRef.current.srcObject = stream;
-        }
         setIsScreenSharing(true);
+        setRoomMode("SCREEN_SHARE");
         showToast("🖥️ Screen sharing started");
 
         if (socketRef.current && roomCode) {
@@ -1030,16 +1040,45 @@ export function Room() {
     }
   };
 
+  // Game Engine Actions
+  const handleCreateGame = () => {
+    if (socketRef.current && roomCode) {
+      socketRef.current.emit("game_create", { roomCode });
+      showToast("🎮 Initializing Room Game Session...");
+    }
+  };
+
+  const handleJoinGame = () => {
+    if (socketRef.current && roomCode) {
+      socketRef.current.emit("game_join", { roomCode });
+    }
+  };
+
+  const handleStartGame = () => {
+    if (socketRef.current && roomCode) {
+      socketRef.current.emit("game_start", { roomCode });
+    }
+  };
+
+  const handleSubmitAnswer = (questionIndex: number, optionIndex: number) => {
+    if (socketRef.current && roomCode) {
+      socketRef.current.emit("game_submit_answer", { roomCode, questionIndex, optionIndex });
+    }
+  };
+
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
 
+  const currentSocketId = socketRef.current?.id || '';
+  const isCurrentHost = participants.some(p => p.socketId === currentSocketId && p.isHost);
+
   return (
     <div className="h-[calc(100vh-3.5rem)] flex flex-col bg-[hsl(var(--bg))] text-[hsl(var(--text))] overflow-hidden transition-colors duration-200 relative">
       
-      {/* Callback-ref bound Hidden Audio elements for remote WebRTC voice audio playback */}
+      {/* Hidden Audio elements for remote WebRTC audio playback */}
       {Array.from(remoteStreamsMap.entries()).map(([sid, stream]) => (
         <audio
           key={sid}
@@ -1055,7 +1094,7 @@ export function Room() {
         />
       ))}
 
-      {/* Floating Top Notification Banner */}
+      {/* Floating Notification Toast */}
       {toastMessage && (
         <div className="absolute top-14 left-1/2 -translate-x-1/2 z-50 animate-bounce-short pointer-events-none">
           <div className="bg-neutral-900/95 text-white border border-[hsl(var(--accent))] px-4 py-1.5 rounded-full shadow-2xl flex items-center gap-2 text-xs font-semibold backdrop-blur-md">
@@ -1065,7 +1104,7 @@ export function Room() {
         </div>
       )}
 
-      {/* Sub-header Bar */}
+      {/* Sub-header Bar with Mode Indicator & Stop Media Button */}
       <div className="h-12 border-b border-[hsl(var(--border))] bg-[hsl(var(--surface))] px-4 sm:px-6 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2 px-3 py-0.5 rounded-full bg-[hsl(var(--surface-elevated))] border border-[hsl(var(--border))]">
@@ -1073,13 +1112,41 @@ export function Room() {
             <span className="text-xs font-mono font-bold tracking-wider text-[hsl(var(--text))]">ROOM {roomCode}</span>
           </div>
 
-          <div className="hidden sm:flex items-center gap-1.5 text-xs text-[hsl(var(--text-secondary))] font-medium">
-            <Users className="w-3.5 h-3.5 text-[hsl(var(--accent))]" />
-            <span>{participants.length} Active {participants.length === 1 ? 'Participant' : 'Participants'}</span>
+          {/* Mode Badge */}
+          <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[hsl(var(--accent))/0.1] border border-[hsl(var(--accent))/0.2] text-[hsl(var(--accent))] font-mono text-[11px] font-bold uppercase tracking-wider">
+            <Sparkles className="w-3 h-3" />
+            <span>MODE: {roomMode}</span>
+          </div>
+
+          {/* Mode Quick Switchers */}
+          <div className="hidden md:flex items-center gap-1.5 pl-2 border-l border-[hsl(var(--border))]">
+            <button
+              type="button"
+              onClick={handleCreateGame}
+              className={`px-2.5 py-1 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                roomMode === 'GAME' ? 'bg-[hsl(var(--accent))] text-white' : 'hover:bg-[hsl(var(--surface-elevated))] text-[hsl(var(--text-secondary))]'
+              }`}
+            >
+              <Gamepad2 className="w-3.5 h-3.5" />
+              <span>Games</span>
+            </button>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Prominent Stop Active Media / Exit Mode Button */}
+          {roomMode !== "VC" && (
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={handleStopActiveMedia}
+              className="h-8 text-xs font-bold rounded-md gap-1.5 shadow-sm cursor-pointer"
+            >
+              <StopCircle className="w-3.5 h-3.5" />
+              <span>Exit {roomMode}</span>
+            </Button>
+          )}
+
           <Button 
             variant={showChat ? "default" : "outline"} 
             size="sm" 
@@ -1127,20 +1194,20 @@ export function Room() {
         {/* Stage Container */}
         <main className="flex-1 flex flex-col p-4 overflow-y-auto no-scrollbar justify-between bg-[hsl(var(--surface-sunken))] relative">
           
-          {/* Top Video Link Control Bar */}
+          {/* Video Link Control Input */}
           <form onSubmit={handleLoadVideo} className="mb-3 flex gap-2">
             <div className="relative flex-1">
               <LinkIcon className="w-3.5 h-3.5 text-[hsl(var(--text-muted))] absolute left-3 top-1/2 -translate-y-1/2" />
               <Input
                 type="text"
-                placeholder="Paste Video URL (YouTube / MP4 / Web stream) to sync across all screens..."
+                placeholder="Paste Video URL (YouTube / MP4 / Web stream) to watch together..."
                 value={videoUrlInput}
                 onChange={(e) => setVideoUrlInput(e.target.value)}
                 className="h-9 text-xs pl-8 bg-[hsl(var(--surface))] border-[hsl(var(--border))]"
               />
             </div>
             <Button type="submit" size="sm" className="h-9 px-4 text-xs font-bold rounded-md bg-[hsl(var(--accent))] text-white hover:bg-[hsl(var(--accent-hover))] cursor-pointer">
-              Load & Sync Video
+              Watch Video Together 🍿
             </Button>
           </form>
 
@@ -1160,8 +1227,19 @@ export function Room() {
               ))}
             </div>
 
-            {/* 1. Host Local Screen Sharing View */}
-            {isScreenSharing ? (
+            {/* STAGE MODE 1: GAME MODE */}
+            {roomMode === "GAME" ? (
+              <GameStage
+                gameSession={activeGameSession}
+                isHost={isCurrentHost}
+                currentSocketId={currentSocketId}
+                onJoinGame={handleJoinGame}
+                onStartGame={handleStartGame}
+                onSubmitAnswer={handleSubmitAnswer}
+                onExitGame={handleStopActiveMedia}
+              />
+            ) : isScreenSharing ? (
+              /* STAGE MODE 2: LOCAL SCREEN SHARE STAGE */
               <div className="relative w-full h-full flex items-center justify-center">
                 <video
                   ref={screenVideoRef}
@@ -1171,11 +1249,18 @@ export function Room() {
                 />
                 <div className="absolute top-3 left-3 bg-red-600 text-white text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1.5 shadow">
                   <Tv className="w-3.5 h-3.5" />
-                  <span>Sharing Screen (Live to Room)</span>
+                  <span>Sharing Screen Live</span>
                 </div>
+                <button
+                  type="button"
+                  onClick={handleStopActiveMedia}
+                  className="absolute top-3 right-3 bg-red-600/90 hover:bg-red-600 text-white text-xs font-bold px-3 py-1 rounded-md flex items-center gap-1 cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" /> Stop Sharing
+                </button>
               </div>
             ) : remoteScreenActive ? (
-              /* 2. Remote Screen Share View (WebRTC Live Stream) */
+              /* STAGE MODE 3: REMOTE SCREEN SHARE STAGE */
               <div className="relative w-full h-full flex items-center justify-center">
                 <video
                   ref={(el) => {
@@ -1197,9 +1282,16 @@ export function Room() {
                 </div>
               </div>
             ) : activeYtId ? (
-              /* 3A. Official YouTube IFrame Player */
+              /* STAGE MODE 4A: YOUTUBE SYNCHRONIZED PLAYER */
               <div className="relative w-full h-full flex flex-col items-center justify-center bg-black rounded-lg overflow-hidden group">
                 <div ref={ytContainerRef} className="w-full h-full max-h-[62vh] rounded-lg" />
+                <button
+                  type="button"
+                  onClick={handleStopActiveMedia}
+                  className="absolute top-3 right-3 bg-black/80 hover:bg-red-600 text-white text-xs font-bold px-3 py-1 rounded-md flex items-center gap-1 z-20 cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" /> Stop Video
+                </button>
                 <div className="absolute bottom-2 left-3 bg-black/80 backdrop-blur-md px-3 py-1 rounded-md text-xs font-bold text-white flex items-center gap-2 z-10">
                   <button
                     type="button"
@@ -1212,7 +1304,7 @@ export function Room() {
                 </div>
               </div>
             ) : activeVideoUrl ? (
-              /* 3B. Synchronized Real-Time HTML5 Video Player */
+              /* STAGE MODE 4B: HTML5 SYNCHRONIZED PLAYER */
               <div className="relative w-full h-full flex flex-col items-center justify-center bg-black rounded-lg overflow-hidden group">
                 <video
                   ref={syncPlayerRef}
@@ -1246,7 +1338,14 @@ export function Room() {
                   className="w-full h-full max-h-[62vh] object-contain"
                 />
 
-                {/* Synced Control Bar Overlay */}
+                <button
+                  type="button"
+                  onClick={handleStopActiveMedia}
+                  className="absolute top-3 right-3 bg-black/80 hover:bg-red-600 text-white text-xs font-bold px-3 py-1 rounded-md flex items-center gap-1 z-20 cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" /> Stop Video
+                </button>
+
                 <div className="absolute bottom-0 inset-x-0 p-3 bg-gradient-to-t from-black/90 via-black/50 to-transparent flex items-center gap-3 text-white transition-opacity duration-200">
                   <button
                     type="button"
@@ -1260,7 +1359,6 @@ export function Room() {
                     {formatTime(currentTime)} / {formatTime(duration)}
                   </span>
 
-                  {/* Scrubber Seek Bar */}
                   <input
                     type="range"
                     min={0}
@@ -1273,36 +1371,42 @@ export function Room() {
                 </div>
               </div>
             ) : (
-              /* 4. WhatsApp-Style Responsive Video Call & Multi-Participant Grid */
+              /* STAGE MODE 5: MULTI-PARTICIPANT VC GRID */
               (() => {
-                const remoteCamUsers = participants.filter(p => p.socketId !== socketRef.current?.id && p.videoOn);
-                
-                // Single Remote Camera Active -> WhatsApp 1-on-1 Video Call Layout
-                if (remoteCamUsers.length === 1 && !videoOn) {
-                  const remoteP = remoteCamUsers[0];
-                  const stream = remoteStreamsMap.get(remoteP.socketId) || null;
+                // If a participant is pinned, render Pinned Stage Layout
+                if (pinnedSocketId) {
+                  const pinnedUser = participants.find(p => p.socketId === pinnedSocketId);
+                  const isLocal = pinnedSocketId === currentSocketId;
+                  const stream = isLocal ? (localStream || mediaStreamRef.current) : (remoteStreamsMap.get(pinnedSocketId) || null);
                   return (
-                    <div className="w-full h-full p-2 flex items-center justify-center">
-                      <div className="w-full h-full max-h-[65vh] max-w-5xl rounded-2xl overflow-hidden shadow-2xl border-2 border-emerald-500/30 bg-black relative">
+                    <div className="w-full h-full p-2 flex flex-col items-center justify-center relative">
+                      <div className="w-full h-full max-h-[65vh] max-w-5xl rounded-2xl overflow-hidden shadow-2xl border-2 border-[hsl(var(--accent))] bg-black relative">
                         <ParticipantTile
-                          id={remoteP.socketId}
-                          name={remoteP.name}
-                          isHost={remoteP.isHost}
-                          isLocal={false}
-                          micOn={remoteP.micOn}
-                          videoOn={true}
-                          isSpeaking={speakingSocketIds.has(remoteP.socketId)}
+                          id={pinnedSocketId}
+                          name={pinnedUser?.name || 'Pinned Participant'}
+                          isHost={Boolean(pinnedUser?.isHost)}
+                          isLocal={isLocal}
+                          micOn={Boolean(pinnedUser?.micOn)}
+                          videoOn={Boolean(pinnedUser?.videoOn)}
+                          isSpeaking={speakingSocketIds.has(pinnedSocketId)}
                           stream={stream}
                           className="w-full h-full"
                         />
+                        <button
+                          type="button"
+                          onClick={() => setPinnedSocketId(null)}
+                          className="absolute top-3 right-3 bg-black/80 hover:bg-neutral-800 text-white text-xs font-bold px-3 py-1 rounded-md flex items-center gap-1 z-20 cursor-pointer"
+                        >
+                          <Pin className="w-3.5 h-3.5 text-[hsl(var(--accent))]" /> Unpin
+                        </button>
                       </div>
                     </div>
                   );
                 }
 
-                // WhatsApp Split/Grid View for Multi-Participant or Default Stage
+                // Default Grid View
                 return (
-                  <div className="w-full h-full p-2 flex flex-col items-center justify-center overflow-y-auto">
+                  <div className="w-full h-full p-2 flex flex-col items-center justify-center overflow-y-auto no-scrollbar">
                     <div
                       className={`w-full h-full max-h-[65vh] grid gap-3 ${
                         participants.length <= 1
@@ -1315,23 +1419,28 @@ export function Room() {
                       }`}
                     >
                       {participants.map((p) => {
-                        const isLocal = p.socketId === socketRef.current?.id;
+                        const isLocal = p.socketId === currentSocketId;
                         const stream = isLocal
                           ? (localStream || mediaStreamRef.current)
                           : remoteStreamsMap.get(p.socketId) || null;
                         return (
-                          <ParticipantTile
+                          <div
                             key={p.id || p.socketId}
-                            id={p.socketId}
-                            name={p.name}
-                            isHost={p.isHost}
-                            isLocal={isLocal}
-                            micOn={p.micOn}
-                            videoOn={p.videoOn}
-                            isSpeaking={speakingSocketIds.has(p.socketId)}
-                            stream={stream}
-                            className="w-full h-full min-h-[220px]"
-                          />
+                            onClick={() => setPopoverParticipant(p)}
+                            className="cursor-pointer transition-transform hover:scale-[1.01]"
+                          >
+                            <ParticipantTile
+                              id={p.socketId}
+                              name={p.name}
+                              isHost={p.isHost}
+                              isLocal={isLocal}
+                              micOn={p.micOn}
+                              videoOn={p.videoOn}
+                              isSpeaking={speakingSocketIds.has(p.socketId)}
+                              stream={stream}
+                              className="w-full h-full min-h-[200px]"
+                            />
+                          </div>
                         );
                       })}
                     </div>
@@ -1340,8 +1449,8 @@ export function Room() {
               })()
             )}
 
-            {/* DRAGGABLE PIP Thumbnail: Displays Local Camera in Corner (WhatsApp Video Call Floating Corner PIP) */}
-            {videoOn && (isScreenSharing || remoteScreenActive || Boolean(activeVideoUrl) || participants.some(p => p.socketId !== socketRef.current?.id && p.videoOn)) && (
+            {/* DRAGGABLE PIP Thumbnail */}
+            {videoOn && (isScreenSharing || remoteScreenActive || Boolean(activeVideoUrl) || roomMode !== "VC") && (
               <DraggablePip
                 initialClass="bottom-16 right-4 w-52 h-36 rounded-2xl border-2 border-[hsl(var(--accent))] overflow-hidden shadow-2xl bg-black"
                 label="You (Host)"
@@ -1362,42 +1471,40 @@ export function Room() {
               </DraggablePip>
             )}
 
-            {/* DRAGGABLE PIP Thumbnails: Displays Remote Participants' Cameras in Corner (Only when remote user's camera videoOn is TRUE and main stage has content) */}
-            {(isScreenSharing || remoteScreenActive || Boolean(activeVideoUrl)) &&
-              participants
-                .filter((p) => p.socketId !== socketRef.current?.id && p.videoOn)
-                .map((remoteP, idx) => {
-                  const stream = remoteStreamsMap.get(remoteP.socketId);
-                  const offsetLeft = 16 + idx * 200;
-                  return (
-                    <DraggablePip
-                      key={remoteP.id || remoteP.socketId}
-                      initialClass="bottom-16 rounded-xl border-2 border-emerald-500 overflow-hidden shadow-2xl bg-black w-48 h-32"
-                      style={{ left: `${offsetLeft}px` }}
-                      label={remoteP.name || "Guest Participant"}
-                    >
-                      <video
-                        ref={(el) => {
-                          if (el && stream && el.srcObject !== stream) {
-                            el.srcObject = stream;
-                            el.play().catch((err) => console.error("Remote PIP error", err));
-                          }
-                        }}
-                        autoPlay
-                        playsInline
-                        className="w-full h-full object-cover pointer-events-none"
-                      />
-                    </DraggablePip>
-                  );
-                })
-            }
-
           </div>
+
+          {/* RESPONSIVE PARTICIPANT RAIL (Visible below main stage during Watch / Screen Share / Game modes) */}
+          {roomMode !== "VC" && (
+            <div className="mt-3 p-2 rounded-xl bg-black/40 border border-white/10 flex items-center gap-3 overflow-x-auto no-scrollbar shrink-0">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 flex items-center gap-1.5 px-2">
+                <Users className="w-3.5 h-3.5 text-[hsl(var(--accent))]" />
+                <span>Room Rail ({participants.length})</span>
+              </div>
+              {participants.map(p => {
+                const isLocal = p.socketId === currentSocketId;
+                const isSpeaking = speakingSocketIds.has(p.socketId);
+                return (
+                  <div
+                    key={p.id || p.socketId}
+                    onClick={() => setPopoverParticipant(p)}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-semibold shrink-0 cursor-pointer transition-all ${
+                      isSpeaking ? "border-emerald-500 bg-emerald-500/10" : "border-white/10 bg-white/5 hover:bg-white/10"
+                    }`}
+                  >
+                    <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-[hsl(var(--accent))] to-purple-600 text-white flex items-center justify-center text-[10px] font-bold">
+                      {p.name ? p.name.charAt(0).toUpperCase() : '?'}
+                    </div>
+                    <span>{p.name} {isLocal ? '(You)' : ''}</span>
+                    {p.micOn ? <Mic className="w-3 h-3 text-emerald-400" /> : <MicOff className="w-3 h-3 text-rose-400" />}
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           {/* Action Control Dock */}
           <div className="mt-3 h-14 rounded-xl ui-card px-4 flex items-center justify-between shrink-0 shadow-xs">
             
-            {/* Hardware Buttons */}
             <div className="flex items-center gap-2">
               <Button
                 variant={micOn ? "default" : "secondary"}
@@ -1427,6 +1534,16 @@ export function Room() {
               >
                 {isScreenSharing ? <StopCircle className="w-3.5 h-3.5" /> : <Monitor className="w-3.5 h-3.5" />}
                 <span>{isScreenSharing ? "Stop Sharing" : "Share Screen"}</span>
+              </Button>
+
+              <Button
+                variant={roomMode === "GAME" ? "default" : "outline"}
+                size="sm"
+                onClick={handleCreateGame}
+                className="rounded-md cursor-pointer text-xs gap-1.5 bg-[hsl(var(--accent))] text-white hover:bg-[hsl(var(--accent-hover))]"
+              >
+                <Gamepad2 className="w-3.5 h-3.5" />
+                <span>Play Game</span>
               </Button>
             </div>
 
@@ -1472,10 +1589,14 @@ export function Room() {
             {/* Real-time Participant List */}
             <div className="p-3 border-b border-[hsl(var(--border))] max-h-32 overflow-y-auto space-y-1.5 no-scrollbar">
               {participants.map((p) => (
-                <div key={p.id} className="flex items-center justify-between px-2 py-1 rounded bg-[hsl(var(--surface-elevated))] text-xs">
+                <div
+                  key={p.id}
+                  onClick={() => setPopoverParticipant(p)}
+                  className="flex items-center justify-between px-2 py-1 rounded bg-[hsl(var(--surface-elevated))] text-xs cursor-pointer hover:bg-[hsl(var(--border))]"
+                >
                   <div className="flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                    <span className="font-semibold text-[hsl(var(--text))]">{p.name} {p.socketId === socketRef.current?.id ? '(You)' : ''}</span>
+                    <span className="font-semibold text-[hsl(var(--text))]">{p.name} {p.socketId === currentSocketId ? '(You)' : ''}</span>
                   </div>
                   {p.isHost && (
                     <span className="text-[10px] font-bold text-[hsl(var(--accent))] bg-[hsl(var(--accent)/0.1)] px-1.5 py-0.5 rounded">
@@ -1527,6 +1648,62 @@ export function Room() {
         )}
 
       </div>
+
+      {/* PARTICIPANT ACTION POPOVER MODAL */}
+      {popoverParticipant && (
+        <ParticipantPopover
+          participant={popoverParticipant}
+          isLocal={popoverParticipant.socketId === currentSocketId}
+          isPinned={pinnedSocketId === popoverParticipant.socketId}
+          onClose={() => setPopoverParticipant(null)}
+          onTogglePin={(socketId) => {
+            setPinnedSocketId(prev => (prev === socketId ? null : socketId));
+            showToast(pinnedSocketId === socketId ? "Unpinned user view" : `Pinned ${popoverParticipant.name}'s stream`);
+          }}
+          onExpand={(participant) => {
+            setExpandedParticipant(participant);
+          }}
+          onMuteParticipant={(targetSid) => {
+            showToast(`Requested mute for participant (${targetSid.substring(0, 5)})`);
+          }}
+        />
+      )}
+
+      {/* ENLARGED PARTICIPANT VIEW MODAL */}
+      {expandedParticipant && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-[#12151C] border border-white/15 w-full max-w-4xl h-[75vh] rounded-2xl p-4 flex flex-col justify-between relative shadow-2xl">
+            <div className="flex items-center justify-between border-b border-white/10 pb-2">
+              <h3 className="font-bold text-sm text-white">Expanded View: {expandedParticipant.name}</h3>
+              <button
+                type="button"
+                onClick={() => setExpandedParticipant(null)}
+                className="text-gray-400 hover:text-white p-1 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="flex-1 my-2 rounded-xl bg-black overflow-hidden relative flex items-center justify-center">
+              <ParticipantTile
+                id={expandedParticipant.socketId}
+                name={expandedParticipant.name}
+                isHost={expandedParticipant.isHost}
+                isLocal={expandedParticipant.socketId === currentSocketId}
+                micOn={expandedParticipant.micOn}
+                videoOn={expandedParticipant.videoOn}
+                isSpeaking={speakingSocketIds.has(expandedParticipant.socketId)}
+                stream={
+                  expandedParticipant.socketId === currentSocketId
+                    ? (localStream || mediaStreamRef.current)
+                    : remoteStreamsMap.get(expandedParticipant.socketId) || null
+                }
+                className="w-full h-full"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

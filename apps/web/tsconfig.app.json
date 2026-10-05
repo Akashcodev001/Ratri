@@ -7,6 +7,12 @@
     "types": ["vite/client"],
     "allowArbitraryExtensions": true,
     "skipLibCheck": true,
+    "ignoreDeprecations": "6.0",
+    "baseUrl": ".",
+    "paths": {
+      "@ratri/types": ["../../packages/types/src/index.ts"],
+      "@ratri/validation": ["../../packages/validation/src/index.ts"]
+    },
 
     /* Bundler mode */
     "moduleResolution": "bundler",

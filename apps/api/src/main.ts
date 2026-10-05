@@ -7,7 +7,7 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   
   app.enableCors({
-    origin: process.env.CORS_ALLOWED_ORIGINS?.split(',') || 'http://localhost:5173',
+    origin: true,
     credentials: true,
   });
 
@@ -17,7 +17,7 @@ async function bootstrap() {
   app.setGlobalPrefix('v1');
 
   const port = process.env.PORT || 3000;
-  await app.listen(port);
-  Logger.log(`🚀 API is running on: http://localhost:${port}/v1`);
+  await app.listen(port, '0.0.0.0');
+  Logger.log(`🚀 API is running on: http://0.0.0.0:${port}/v1`);
 }
 bootstrap();
