@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { ChillMatchModal } from "../components/ChillMatchModal";
+import { SeoHead } from "../components/seo/SeoHead";
 import { 
   Users, 
   MessageSquare, 
@@ -28,6 +29,30 @@ export function Home() {
   const [roomCode, setRoomCode] = useState("");
   const [roomName, setRoomName] = useState("");
   const [roomType, setRoomType] = useState<"chill" | "watch" | "talk">("watch");
+
+  const homeJsonLd = [
+    {
+      '@context': 'https://schema.org',
+      '@type': 'WebSite',
+      name: 'Ratri',
+      url: 'https://ratri.app/',
+      description: 'Real-time social watch party & spatial voice lounge platform.',
+      potentialAction: {
+        '@type': 'SearchAction',
+        target: 'https://ratri.app/r/{search_term_string}',
+        'query-input': 'required name=search_term_string',
+      },
+    },
+    {
+      '@context': 'https://schema.org',
+      '@type': 'WebApplication',
+      name: 'Ratri',
+      url: 'https://ratri.app',
+      description: 'Watch synchronized videos, listen to music, play trivia games, and talk in real-time with friends.',
+      applicationCategory: 'SocialNetworkingApplication',
+      operatingSystem: 'All',
+    },
+  ];
   const [loading, setLoading] = useState(false);
   const [showChillModal, setShowChillModal] = useState(false);
   const [notifyEmail, setNotifyEmail] = useState("");
@@ -81,6 +106,12 @@ export function Home() {
 
   return (
     <div className="min-h-[calc(100vh-3.5rem)] flex flex-col justify-between px-4 sm:px-6 lg:px-8 py-8 lg:py-12 max-w-7xl mx-auto text-left">
+      <SeoHead
+        title="Ratri — Watch Videos Together Online (Zero Signup)"
+        description="Watch synchronized videos, listen to music lounges, play trivia games, and chat with friends in real-time over low-latency WebRTC voice & video. Guest-friendly, zero signups required."
+        canonicalPath="/"
+        jsonLd={homeJsonLd}
+      />
       
       {/* Hero Section: Split 2-Column Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-8 items-center my-auto">
@@ -550,12 +581,14 @@ export function Home() {
             <span>by <strong className="text-[hsl(var(--accent))] font-extrabold tracking-wide">ak</strong></span>
           </div>
 
-          <div className="flex items-center gap-4 text-xs text-[hsl(var(--text-muted))]">
-            <span className="hover:text-[hsl(var(--text))] transition-colors cursor-pointer">Privacy Policy</span>
+          <div className="flex flex-wrap items-center justify-center gap-4 text-xs text-[hsl(var(--text-muted))]">
+            <Link to="/watch-together" className="hover:text-[hsl(var(--text))] transition-colors">Watch Together</Link>
             <span>•</span>
-            <span className="hover:text-[hsl(var(--text))] transition-colors cursor-pointer">Terms of Service</span>
+            <Link to="/watch-party" className="hover:text-[hsl(var(--text))] transition-colors">Watch Party</Link>
             <span>•</span>
-            <span className="hover:text-[hsl(var(--text))] transition-colors cursor-pointer">Security</span>
+            <Link to="/screen-share" className="hover:text-[hsl(var(--text))] transition-colors">Screen Share</Link>
+            <span>•</span>
+            <Link to="/listen-together" className="hover:text-[hsl(var(--text))] transition-colors">Music Lounge</Link>
           </div>
         </div>
 

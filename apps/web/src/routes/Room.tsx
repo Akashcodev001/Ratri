@@ -7,6 +7,7 @@ import { ParticipantPopover } from "../components/ParticipantPopover";
 import { GameStage } from "../components/GameStage";
 import { GameSelectionModal } from "../components/GameSelectionModal";
 import { ChillMatchModal } from "../components/ChillMatchModal";
+import { SeoHead } from "../components/seo/SeoHead";
 import { SAMPLE_VIDEOS } from "../utils/sampleVideos";
 import type { RoomMode, GameSession, RoomStatePayload, Participant, GameId } from "@ratri/types";
 import { 
@@ -958,7 +959,7 @@ export function Room() {
         }
       }
 
-      showToast(nextVideo ? "📷 Camera turned ON" : "📷 Camera turned OFF");
+      showToast(nextVideo ? "Camera turned ON" : "Camera turned OFF");
 
       if (socketRef.current && roomCode) {
         socketRef.current.emit("update_media_state", {
@@ -994,7 +995,7 @@ export function Room() {
         }
       }
 
-      showToast(nextMic ? "🎙️ Microphone UNMUTED" : "🔇 Microphone MUTED");
+      showToast(nextMic ? "Microphone UNMUTED" : "Microphone MUTED");
 
       if (socketRef.current && roomCode) {
         socketRef.current.emit("update_media_state", {
@@ -1128,6 +1129,12 @@ export function Room() {
 
   return (
     <div className="h-[calc(100vh-3.5rem)] flex flex-col bg-[hsl(var(--bg))] text-[hsl(var(--text))] overflow-hidden transition-colors duration-200 relative">
+      <SeoHead
+        title={`Ratri Room ${roomCode}`}
+        description="Private Ratri social watch session."
+        canonicalPath={`/r/${roomCode}`}
+        noindex={true}
+      />
       
       {/* Hidden Audio elements for remote WebRTC audio playback */}
       {Array.from(remoteStreamsMap.entries()).map(([sid, stream]) => (
@@ -1148,7 +1155,7 @@ export function Room() {
       {/* Floating Notification Toast */}
       {toastMessage && (
         <div className="absolute top-14 left-1/2 -translate-x-1/2 z-50 animate-bounce-short pointer-events-none">
-          <div className="bg-neutral-900/95 text-white border border-[hsl(var(--accent))] px-4 py-1.5 rounded-full shadow-2xl flex items-center gap-2 text-xs font-semibold backdrop-blur-md">
+          <div className="bg-[hsl(var(--surface-elevated))] text-[hsl(var(--text))] border border-[hsl(var(--border))] px-4 py-1.5 rounded-full shadow-2xl flex items-center gap-2 text-xs font-semibold backdrop-blur-md">
             <span className="w-2 h-2 rounded-full bg-[hsl(var(--accent))] animate-pulse" />
             <span>{toastMessage}</span>
           </div>
@@ -1289,7 +1296,7 @@ export function Room() {
               </form>
 
               <div className="flex items-center gap-2 mb-3 overflow-x-auto no-scrollbar py-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 whitespace-nowrap flex items-center gap-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[hsl(var(--text-secondary))] whitespace-nowrap flex items-center gap-1">
                   🎬 Quick HD Presets:
                 </span>
                 {SAMPLE_VIDEOS.map((sample) => (
@@ -1300,12 +1307,12 @@ export function Room() {
                       setActiveVideoUrl(sample.url);
                       setVideoUrlInput(sample.url);
                       setRoomMode("WATCH");
-                      showToast(`🎬 Loaded stream: ${sample.title}`);
+                      showToast(`Loaded stream: ${sample.title}`);
                       if (socketRef.current && roomCode) {
                         socketRef.current.emit("sync_video", { roomCode, videoUrl: sample.url, videoId: "" });
                       }
                     }}
-                    className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/15 border border-white/10 text-gray-200 text-[11px] font-semibold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1 hover:scale-105 shadow-sm"
+                    className="px-2.5 py-1 rounded-lg bg-[hsl(var(--surface-elevated))] hover:bg-[hsl(var(--border))] border border-[hsl(var(--border))] text-[hsl(var(--text))] text-[11px] font-semibold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1 hover:scale-105 shadow-xs"
                   >
                     <span>{sample.title}</span>
                   </button>
@@ -1332,26 +1339,26 @@ export function Room() {
 
             {/* STAGE MODE 0: CHILL CHAT LOUNGE */}
             {isChillMode ? (
-              <div className="w-full h-full flex flex-col justify-between p-4 sm:p-5 bg-gradient-to-b from-neutral-900 via-neutral-950 to-black text-white rounded-2xl border border-white/15 relative overflow-hidden shadow-2xl">
+              <div className="w-full h-full flex flex-col justify-between p-4 sm:p-5 bg-[hsl(var(--surface-elevated))] text-[hsl(var(--text))] rounded-2xl border border-[hsl(var(--border))] relative overflow-hidden shadow-xl">
                 {/* Header Bar */}
-                <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-3 shrink-0">
+                <div className="flex items-center justify-between border-b border-[hsl(var(--border))] pb-3 mb-3 shrink-0">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 font-bold text-lg">
+                    <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-500 font-bold text-lg">
                       ⚡
                     </div>
                     <div className="text-left">
-                      <h2 className="text-base sm:text-lg font-extrabold text-white flex items-center gap-2">
+                      <h2 className="text-base sm:text-lg font-extrabold text-[hsl(var(--text))] flex items-center gap-2">
                         <span>Random Chill Chat Lounge</span>
-                        <span className="text-xs px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-mono border border-amber-500/30 uppercase">
+                        <span className="text-xs px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-500 font-mono border border-amber-500/30 uppercase">
                           {urlTopic || "Random"}
                         </span>
                       </h2>
-                      <p className="text-xs text-gray-400">Pure text chat • Real-time anonymous pairing</p>
+                      <p className="text-xs text-[hsl(var(--text-secondary))]">Pure text chat • Real-time anonymous pairing</p>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <div className="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-xl bg-white/10 border border-white/15 text-xs font-semibold">
+                    <div className="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-xl bg-[hsl(var(--surface))] border border-[hsl(var(--border))] text-xs font-semibold text-[hsl(var(--text-secondary))]">
                       <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                       <span>{participants.length} Participant{participants.length === 1 ? '' : 's'}</span>
                     </div>
@@ -1366,19 +1373,19 @@ export function Room() {
                 </div>
 
                 {/* Center Live Message Feed */}
-                <div className="flex-1 overflow-y-auto space-y-3 p-4 bg-black/50 rounded-xl border border-white/10 mb-3 text-left no-scrollbar min-h-[220px]">
+                <div className="flex-1 overflow-y-auto space-y-3 p-4 bg-[hsl(var(--surface-sunken))] rounded-xl border border-[hsl(var(--border))] mb-3 text-left no-scrollbar min-h-[220px]">
                   {messages.length === 0 ? (
-                    <div className="h-full flex flex-col items-center justify-center text-center text-gray-400 space-y-2 py-8">
-                      <div className="w-14 h-14 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center text-2xl animate-bounce">
+                    <div className="h-full flex flex-col items-center justify-center text-center text-[hsl(var(--text-secondary))] space-y-2 py-8">
+                      <div className="w-14 h-14 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-500 flex items-center justify-center text-2xl animate-bounce">
                         💬
                       </div>
-                      <h3 className="font-extrabold text-white text-base">Connected to Chill Chat!</h3>
-                      <p className="text-xs text-gray-400 max-w-sm">
+                      <h3 className="font-extrabold text-[hsl(var(--text))] text-base">Connected to Chill Chat!</h3>
+                      <p className="text-xs text-[hsl(var(--text-secondary))] max-w-sm">
                         Type a message below to start chatting with your partner in real time!
                       </p>
                       <div className="flex flex-wrap justify-center gap-1.5 pt-2">
                         {participants.map(p => (
-                          <span key={p.socketId} className="px-2.5 py-1 rounded-lg bg-white/10 text-[11px] font-semibold text-amber-300">
+                          <span key={p.socketId} className="px-2.5 py-1 rounded-lg bg-[hsl(var(--surface))] border border-[hsl(var(--border))] text-[11px] font-semibold text-amber-500">
                             👤 {p.name} {p.socketId === currentSocketId ? '(You)' : ''}
                           </span>
                         ))}
@@ -1392,15 +1399,15 @@ export function Room() {
                           key={m.id}
                           className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}
                         >
-                          <div className="flex items-center gap-2 mb-0.5 text-[10px] text-gray-400 font-mono">
-                            <span className="font-bold text-gray-200">{m.sender}</span>
+                          <div className="flex items-center gap-2 mb-0.5 text-[10px] text-[hsl(var(--text-muted))] font-mono">
+                            <span className="font-bold text-[hsl(var(--text))]">{m.sender}</span>
                             <span>{m.time}</span>
                           </div>
                           <div
                             className={`max-w-[85%] px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-medium leading-relaxed shadow-sm ${
                               isMe
                                 ? "bg-[hsl(var(--accent))] text-white rounded-br-none"
-                                : "bg-neutral-800 text-gray-100 border border-white/15 rounded-bl-none"
+                                : "bg-[hsl(var(--surface))] text-[hsl(var(--text))] border border-[hsl(var(--border))] rounded-bl-none"
                             }`}
                           >
                             {m.text}
@@ -1422,7 +1429,7 @@ export function Room() {
                       placeholder="Type a message to your partner..."
                       value={inputMsg}
                       onChange={(e) => setInputMsg(e.target.value)}
-                      className="h-11 text-xs sm:text-sm pl-4 pr-12 rounded-xl bg-white/10 border-white/15 text-white placeholder:text-gray-400 focus:border-amber-400"
+                      className="h-11 text-xs sm:text-sm pl-4 pr-12 rounded-xl bg-[hsl(var(--surface))] border-[hsl(var(--border))] text-[hsl(var(--text))] placeholder:text-[hsl(var(--text-muted))] focus:border-amber-400"
                     />
                     <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1">
                       {EMOJI_LIST.slice(0, 3).map((emoji) => (
@@ -1696,8 +1703,8 @@ export function Room() {
 
           {/* RESPONSIVE PARTICIPANT RAIL (Visible below main stage during Watch / Screen Share / Game modes) */}
           {roomMode !== "VC" && (
-            <div className="mt-3 p-2 rounded-xl bg-black/40 border border-white/10 flex items-center gap-3 overflow-x-auto no-scrollbar shrink-0">
-              <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 flex items-center gap-1.5 px-2">
+            <div className="mt-3 p-2 rounded-xl bg-[hsl(var(--surface-elevated))] border border-[hsl(var(--border))] flex items-center gap-3 overflow-x-auto no-scrollbar shrink-0">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-[hsl(var(--text-secondary))] flex items-center gap-1.5 px-2">
                 <Users className="w-3.5 h-3.5 text-[hsl(var(--accent))]" />
                 <span>Room Rail ({participants.length})</span>
               </div>
@@ -1709,7 +1716,7 @@ export function Room() {
                     key={p.id || p.socketId}
                     onClick={() => setPopoverParticipant(p)}
                     className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-semibold shrink-0 cursor-pointer transition-all ${
-                      isSpeaking ? "border-emerald-500 bg-emerald-500/10" : "border-white/10 bg-white/5 hover:bg-white/10"
+                      isSpeaking ? "border-emerald-500 bg-emerald-500/10 text-[hsl(var(--text))]" : "border-[hsl(var(--border))] bg-[hsl(var(--surface))] hover:bg-[hsl(var(--border))] text-[hsl(var(--text))]"
                     }`}
                   >
                     <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-[hsl(var(--accent))] to-purple-600 text-white flex items-center justify-center text-[10px] font-bold">

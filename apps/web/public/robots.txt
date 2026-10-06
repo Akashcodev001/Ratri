@@ -1,0 +1,12 @@
+# Ratri Robots Directive
+User-agent: *
+Allow: /
+Allow: /watch-together
+Allow: /watch-party
+Allow: /screen-share
+Allow: /listen-together
+Disallow: /r/
+Disallow: /v1/
+
+# Sitemap Location
+Sitemap: https://ratri.app/sitemap.xml

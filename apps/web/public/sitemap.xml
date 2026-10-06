@@ -1,34 +1,4 @@
-import { Controller, Get, Header } from '@nestjs/common';
-import { AppService } from './app.service';
-
-@Controller()
-export class AppController {
-  constructor(private readonly appService: AppService) {}
-
-  @Get()
-  getHello(): string {
-    return this.appService.getHello();
-  }
-
-  @Get('robots.txt')
-  @Header('Content-Type', 'text/plain')
-  getRobots(): string {
-    return `User-agent: *
-Allow: /
-Allow: /watch-together
-Allow: /watch-party
-Allow: /screen-share
-Allow: /listen-together
-Disallow: /r/
-Disallow: /v1/
-
-Sitemap: https://ratri.app/sitemap.xml`;
-  }
-
-  @Get('sitemap.xml')
-  @Header('Content-Type', 'application/xml')
-  getSitemap(): string {
-    return `<?xml version="1.0" encoding="UTF-8"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://ratri.app/</loc>
@@ -60,6 +30,4 @@ Sitemap: https://ratri.app/sitemap.xml`;
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
-</urlset>`;
-  }
-}
+</urlset>

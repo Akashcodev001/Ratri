@@ -10,6 +10,11 @@ import { RatriIntro } from "./components/intro";
 // Route-level Code Splitting for Production Bundle Optimization
 const Home = React.lazy(() => import("./routes/Home").then(m => ({ default: m.Home })));
 const Room = React.lazy(() => import("./routes/Room").then(m => ({ default: m.Room })));
+const WatchTogether = React.lazy(() => import("./routes/WatchTogether").then(m => ({ default: m.WatchTogether })));
+const WatchParty = React.lazy(() => import("./routes/WatchParty").then(m => ({ default: m.WatchParty })));
+const ScreenShareLanding = React.lazy(() => import("./routes/ScreenShareLanding").then(m => ({ default: m.ScreenShareLanding })));
+const ListenTogether = React.lazy(() => import("./routes/ListenTogether").then(m => ({ default: m.ListenTogether })));
+const NotFound = React.lazy(() => import("./routes/NotFound").then(m => ({ default: m.NotFound })));
 
 // Prefetch helper for seamless room transition
 export const prefetchRoomChunk = () => {
@@ -94,10 +99,50 @@ const router = createBrowserRouter([
         ),
       },
       {
+        path: "/watch-together",
+        element: (
+          <SmartSuspense fallback={<HomeSkeleton />}>
+            <WatchTogether />
+          </SmartSuspense>
+        ),
+      },
+      {
+        path: "/watch-party",
+        element: (
+          <SmartSuspense fallback={<HomeSkeleton />}>
+            <WatchParty />
+          </SmartSuspense>
+        ),
+      },
+      {
+        path: "/screen-share",
+        element: (
+          <SmartSuspense fallback={<HomeSkeleton />}>
+            <ScreenShareLanding />
+          </SmartSuspense>
+        ),
+      },
+      {
+        path: "/listen-together",
+        element: (
+          <SmartSuspense fallback={<HomeSkeleton />}>
+            <ListenTogether />
+          </SmartSuspense>
+        ),
+      },
+      {
         path: "/r/:roomCode",
         element: (
           <SmartSuspense fallback={<RoomSkeleton />}>
             <Room />
+          </SmartSuspense>
+        ),
+      },
+      {
+        path: "*",
+        element: (
+          <SmartSuspense fallback={<HomeSkeleton />}>
+            <NotFound />
           </SmartSuspense>
         ),
       },

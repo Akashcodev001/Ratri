@@ -7,7 +7,6 @@ import { Button } from "./ui/button";
 export function Header() {
   const location = useLocation();
   const navigate = useNavigate();
-  const isHomePage = location.pathname === "/";
   const isInRoom = location.pathname.startsWith("/r/");
   const [showExitModal, setShowExitModal] = useState(false);
 
@@ -50,26 +49,29 @@ export function Header() {
             </span>
           </Link>
 
-          {/* Simple Online Indicator */}
-          <div className="flex items-center gap-2 text-xs font-medium text-[hsl(var(--text-secondary))]">
-            <span className="h-2 w-2 rounded-full bg-emerald-500" />
-            <span>Online</span>
-          </div>
+          {/* Navigation Links for SEO & Internal Linking */}
+          <nav className="hidden md:flex items-center gap-4 text-xs font-semibold text-[hsl(var(--text-secondary))]">
+            <Link to="/watch-together" className="hover:text-[hsl(var(--text))] transition-colors">
+              Watch Together
+            </Link>
+            <Link to="/watch-party" className="hover:text-[hsl(var(--text))] transition-colors">
+              Watch Party
+            </Link>
+            <Link to="/screen-share" className="hover:text-[hsl(var(--text))] transition-colors">
+              Screen Share
+            </Link>
+            <Link to="/listen-together" className="hover:text-[hsl(var(--text))] transition-colors">
+              Music Lounge
+            </Link>
+          </nav>
 
-          {/* Right Section: Theme Toggle & Create Room (Only on Home Page) */}
+          {/* Right Section: Theme Toggle & Status */}
           <div className="flex items-center gap-3">
-            {isHomePage && (
-              <>
-                <Link
-                  to="/"
-                  className="text-xs font-semibold text-[hsl(var(--text-secondary))] hover:text-[hsl(var(--text))] hidden sm:block transition-colors"
-                >
-                  Create Room
-                </Link>
-                <div className="h-4 w-[1px] bg-[hsl(var(--border))] hidden sm:block" />
-              </>
-            )}
-
+            <div className="flex items-center gap-2 text-xs font-medium text-[hsl(var(--text-secondary))]">
+              <span className="h-2 w-2 rounded-full bg-emerald-500" />
+              <span>Online</span>
+            </div>
+            <div className="h-4 w-[1px] bg-[hsl(var(--border))]" />
             <ThemeToggle />
           </div>
         </div>
