@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { ThemeToggle } from "./ThemeToggle";
-import { Tv, AlertTriangle, LogOut, X } from "lucide-react";
+import { AlertTriangle, LogOut, X } from "lucide-react";
 import { Button } from "./ui/button";
 
 export function Header() {
@@ -41,8 +41,11 @@ export function Header() {
           
           {/* Brand Logo */}
           <Link to="/" onClick={handleLogoClick} className="flex items-center gap-2.5 group">
-            <div className="w-8 h-8 rounded-lg bg-[hsl(var(--accent))] text-white flex items-center justify-center font-bold shadow-sm group-hover:scale-105 transition-transform duration-200">
-              <Tv className="w-4 h-4 fill-current" />
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-600 to-indigo-600 text-white flex items-center justify-center font-bold shadow-md group-hover:scale-105 transition-transform duration-200 p-1.5">
+              <svg viewBox="0 0 100 100" className="w-full h-full text-white fill-current">
+                <path d="M48 22 C 32 22, 19 35, 19 51 C 19 67, 32 80, 48 80 C 59 80, 68 74, 73 65 C 62 67, 51 59, 51 47 C 51 36, 59 27, 70 24 C 63 22, 55 22, 48 22 Z" fill="currentColor" />
+                <path d="M52 36 L 77 51 L 52 66 Z" fill="#38BDF8" />
+              </svg>
             </div>
             <span className="font-display font-extrabold text-lg tracking-tight text-[hsl(var(--text))]">
               RATRI
