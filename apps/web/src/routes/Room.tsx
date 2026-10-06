@@ -1,11 +1,14 @@
 import { useState, useEffect, useRef } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams, useNavigate } from "react-router-dom";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { ParticipantTile } from "../components/ParticipantTile";
 import { ParticipantPopover } from "../components/ParticipantPopover";
 import { GameStage } from "../components/GameStage";
-import type { RoomMode, GameSession, RoomStatePayload, Participant } from "@ratri/types";
+import { GameSelectionModal } from "../components/GameSelectionModal";
+import { ChillMatchModal } from "../components/ChillMatchModal";
+import { SAMPLE_VIDEOS } from "../utils/sampleVideos";
+import type { RoomMode, GameSession, RoomStatePayload, Participant, GameId } from "@ratri/types";
 import { 
   Copy, 
   LogOut, 
@@ -27,7 +30,8 @@ import {
   GripHorizontal,
   Gamepad2,
   Pin,
-  Sparkles,
+  Radio,
+  Zap,
 } from "lucide-react";
 import { io, Socket } from "socket.io-client";
 
@@ -206,6 +210,15 @@ export function Room() {
   const [remoteStreamsMap, setRemoteStreamsMap] = useState<Map<string, MediaStream>>(new Map());
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [speakingSocketIds, setSpeakingSocketIds] = useState<Set<string>>(new Set());
+  const [showGameSelector, setShowGameSelector] = useState(false);
+  const [showChillModal, setShowChillModal] = useState(false);
+
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const urlName = searchParams.get("name");
+  const urlTopic = searchParams.get("topic");
+
+  const isChillMode = roomCode?.toUpperCase().startsWith("CHILL") || roomMode === "CHILL";
 
   // Refs
   const socketRef = useRef<Socket | null>(null);
@@ -219,6 +232,8 @@ export function Room() {
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
   const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
+  const makingOfferMapRef = useRef<Map<string, boolean>>(new Map());
+  const ignoreOfferMapRef = useRef<Map<string, boolean>>(new Map());
 
   useEffect(() => {
     showChatRef.current = showChat;
@@ -432,7 +447,7 @@ export function Room() {
     });
 
     const emitJoinRoom = () => {
-      socket.emit("join_room", { roomCode: code }, (res: any) => {
+      socket.emit("join_room", { roomCode: code, name: urlName || undefined }, (res: any) => {
         if (res?.participants && Array.isArray(res.participants)) {
           setParticipants(res.participants);
         }
@@ -491,10 +506,9 @@ export function Room() {
 
       for (const p of updatedParticipants) {
         if (p.socketId !== socket.id && !peerConnectionsRef.current.has(p.socketId)) {
-          const peer = createPeerConnection(p.socketId);
-          const offer = await peer.createOffer();
-          await peer.setLocalDescription(offer);
-          socket.emit("webrtc_offer", { targetSocketId: p.socketId, offer });
+          if (socket.id && socket.id < p.socketId) {
+            safeCreateOffer(p.socketId);
+          }
         }
       }
     });
@@ -516,11 +530,10 @@ export function Room() {
         },
       ]);
 
-      if (socket.id && user.socketId !== socket.id) {
-        const peer = createPeerConnection(user.socketId);
-        const offer = await peer.createOffer();
-        await peer.setLocalDescription(offer);
-        socket.emit("webrtc_offer", { targetSocketId: user.socketId, offer });
+      if (socket.id && user.socketId !== socket.id && !peerConnectionsRef.current.has(user.socketId)) {
+        if (socket.id < user.socketId) {
+          safeCreateOffer(user.socketId);
+        }
       }
     });
 
@@ -540,6 +553,8 @@ export function Room() {
         ]);
       }
       if (targetId) {
+        makingOfferMapRef.current.delete(targetId);
+        ignoreOfferMapRef.current.delete(targetId);
         setRemoteStreamsMap(prev => {
           const next = new Map(prev);
           next.delete(targetId);
@@ -632,6 +647,20 @@ export function Room() {
     socket.on("webrtc_offer", async ({ senderSocketId, offer }: { senderSocketId: string; offer: any }) => {
       try {
         const peer = createPeerConnection(senderSocketId);
+        const isMakingOffer = makingOfferMapRef.current.get(senderSocketId) || false;
+        const isPolite = socket.id ? socket.id > senderSocketId : false;
+        const offerCollision = isMakingOffer || peer.signalingState !== "stable";
+
+        ignoreOfferMapRef.current.set(senderSocketId, !isPolite && offerCollision);
+
+        if (ignoreOfferMapRef.current.get(senderSocketId)) {
+          return;
+        }
+
+        if (offerCollision && peer.signalingState !== "stable") {
+          await peer.setLocalDescription({ type: "rollback" });
+        }
+
         await peer.setRemoteDescription(new RTCSessionDescription(offer));
 
         if (mediaStreamRef.current) {
@@ -643,33 +672,44 @@ export function Room() {
           });
         }
 
-        const answer = await peer.createAnswer();
-        await peer.setLocalDescription(answer);
-        socket.emit("webrtc_answer", { targetSocketId: senderSocketId, answer });
+        if (peer.signalingState === "have-remote-offer") {
+          const answer = await peer.createAnswer();
+          if (peer.signalingState === "have-remote-offer") {
+            await peer.setLocalDescription(answer);
+            socket.emit("webrtc_answer", { targetSocketId: senderSocketId, answer });
+          }
+        }
       } catch (err) {
-        console.error("Error handling WebRTC offer", err);
+        console.warn("Handled WebRTC offer state transition", err);
       }
     });
 
     socket.on("webrtc_answer", async ({ senderSocketId, answer }: { senderSocketId: string; answer: any }) => {
       try {
         const peer = peerConnectionsRef.current.get(senderSocketId);
-        if (peer) {
+        if (peer && peer.signalingState === "have-local-offer") {
           await peer.setRemoteDescription(new RTCSessionDescription(answer));
         }
       } catch (err) {
-        console.error("Error handling WebRTC answer", err);
+        console.warn("Handled WebRTC answer state transition", err);
       }
     });
 
     socket.on("webrtc_ice_candidate", async ({ senderSocketId, candidate }: { senderSocketId: string; candidate: any }) => {
       try {
         const peer = peerConnectionsRef.current.get(senderSocketId);
-        if (peer) {
-          await peer.addIceCandidate(new RTCIceCandidate(candidate));
+        const ignoreOffer = ignoreOfferMapRef.current.get(senderSocketId);
+        if (peer && candidate) {
+          try {
+            await peer.addIceCandidate(new RTCIceCandidate(candidate));
+          } catch (err) {
+            if (!ignoreOffer) {
+              console.warn("Handled ICE candidate addition transition", err);
+            }
+          }
         }
       } catch (err) {
-        console.error("Error adding ICE candidate", err);
+        console.warn("Handled ICE candidate event transition", err);
       }
     });
 
@@ -696,6 +736,22 @@ export function Room() {
       closeAllPeers();
     };
   }, [roomCode]);
+
+  const safeCreateOffer = async (targetSocketId: string, options?: RTCOfferOptions) => {
+    const peer = createPeerConnection(targetSocketId);
+    try {
+      makingOfferMapRef.current.set(targetSocketId, true);
+      if (peer.signalingState !== "stable") return;
+      const offer = await peer.createOffer(options);
+      if (peer.signalingState !== "stable") return;
+      await peer.setLocalDescription(offer);
+      socketRef.current?.emit("webrtc_offer", { targetSocketId, offer });
+    } catch (err) {
+      console.warn("Handled offer creation state transition", err);
+    } finally {
+      makingOfferMapRef.current.set(targetSocketId, false);
+    }
+  };
 
   const createPeerConnection = (targetSocketId: string): RTCPeerConnection => {
     if (peerConnectionsRef.current.has(targetSocketId)) {
@@ -750,6 +806,8 @@ export function Room() {
   const closeAllPeers = () => {
     peerConnectionsRef.current.forEach(peer => peer.close());
     peerConnectionsRef.current.clear();
+    makingOfferMapRef.current.clear();
+    ignoreOfferMapRef.current.clear();
   };
 
   // Helper to Stop Active Shared Media & Return to VC Mode
@@ -895,9 +953,7 @@ export function Room() {
             await videoSender.replaceTrack(newVideoTrack);
           } else if (newVideoTrack) {
             peer.addTrack(newVideoTrack, updatedStream);
-            const offer = await peer.createOffer();
-            await peer.setLocalDescription(offer);
-            socketRef.current?.emit("webrtc_offer", { targetSocketId, offer });
+            safeCreateOffer(targetSocketId);
           }
         }
       }
@@ -979,13 +1035,7 @@ export function Room() {
         for (const p of otherParticipants) {
           const peer = createPeerConnection(p.socketId);
           stream.getTracks().forEach(track => peer.addTrack(track, stream));
-          const offer = await peer.createOffer();
-          await peer.setLocalDescription(offer);
-          socketRef.current?.emit("webrtc_offer", {
-            targetSocketId: p.socketId,
-            offer,
-            isScreenShare: true,
-          });
+          safeCreateOffer(p.socketId);
         }
 
         stream.getVideoTracks()[0].onended = () => {
@@ -1023,8 +1073,8 @@ export function Room() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleSendMessage = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSendMessage = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     if (inputMsg.trim() && socketRef.current && roomCode) {
       socketRef.current.emit("send_message", {
         roomCode,
@@ -1041,9 +1091,10 @@ export function Room() {
   };
 
   // Game Engine Actions
-  const handleCreateGame = () => {
+  const handleCreateGame = (gameId?: GameId | React.MouseEvent) => {
     if (socketRef.current && roomCode) {
-      socketRef.current.emit("game_create", { roomCode });
+      const selectedGame = typeof gameId === 'string' ? gameId : undefined;
+      socketRef.current.emit("game_create", { roomCode, gameId: selectedGame });
       showToast("🎮 Initializing Room Game Session...");
     }
   };
@@ -1112,25 +1163,49 @@ export function Room() {
             <span className="text-xs font-mono font-bold tracking-wider text-[hsl(var(--text))]">ROOM {roomCode}</span>
           </div>
 
-          {/* Mode Badge */}
-          <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[hsl(var(--accent))/0.1] border border-[hsl(var(--accent))/0.2] text-[hsl(var(--accent))] font-mono text-[11px] font-bold uppercase tracking-wider">
-            <Sparkles className="w-3 h-3" />
-            <span>MODE: {roomMode}</span>
-          </div>
+          {/* Human-Styled Mode Badge */}
+          {isChillMode ? (
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-300 font-semibold text-xs tracking-tight shadow-sm">
+              <Zap className="w-3.5 h-3.5 text-amber-400 fill-current" />
+              <span>Chill Chat Lounge</span>
+            </div>
+          ) : roomMode === 'GAME' ? (
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-indigo-500/15 border border-indigo-500/30 text-indigo-300 font-semibold text-xs tracking-tight shadow-sm">
+              <Gamepad2 className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Arcade Arena</span>
+            </div>
+          ) : roomMode === 'WATCH' ? (
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-purple-500/15 border border-purple-500/30 text-purple-300 font-semibold text-xs tracking-tight shadow-sm">
+              <Tv className="w-3.5 h-3.5 text-purple-400" />
+              <span>Watch Party</span>
+            </div>
+          ) : roomMode === 'SCREEN_SHARE' ? (
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-sky-500/15 border border-sky-500/30 text-sky-300 font-semibold text-xs tracking-tight shadow-sm">
+              <Monitor className="w-3.5 h-3.5 text-sky-400" />
+              <span>Screen Stage</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-semibold text-xs tracking-tight shadow-sm">
+              <Radio className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
+              <span>Voice & Video</span>
+            </div>
+          )}
 
-          {/* Mode Quick Switchers */}
-          <div className="hidden md:flex items-center gap-1.5 pl-2 border-l border-[hsl(var(--border))]">
-            <button
-              type="button"
-              onClick={handleCreateGame}
-              className={`px-2.5 py-1 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
-                roomMode === 'GAME' ? 'bg-[hsl(var(--accent))] text-white' : 'hover:bg-[hsl(var(--surface-elevated))] text-[hsl(var(--text-secondary))]'
-              }`}
-            >
-              <Gamepad2 className="w-3.5 h-3.5" />
-              <span>Games</span>
-            </button>
-          </div>
+          {/* Mode Quick Switchers (Hidden in CHILL Mode) */}
+          {!isChillMode && (
+            <div className="hidden md:flex items-center gap-1.5 pl-2 border-l border-[hsl(var(--border))]">
+              <button
+                type="button"
+                onClick={() => setShowGameSelector(true)}
+                className={`px-2.5 py-1 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                  roomMode === 'GAME' ? 'bg-[hsl(var(--accent))] text-white' : 'hover:bg-[hsl(var(--surface-elevated))] text-[hsl(var(--text-secondary))]'
+                }`}
+              >
+                <Gamepad2 className="w-3.5 h-3.5" />
+                <span>Games</span>
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-2">
@@ -1194,24 +1269,52 @@ export function Room() {
         {/* Stage Container */}
         <main className="flex-1 flex flex-col p-4 overflow-y-auto no-scrollbar justify-between bg-[hsl(var(--surface-sunken))] relative">
           
-          {/* Video Link Control Input */}
-          <form onSubmit={handleLoadVideo} className="mb-3 flex gap-2">
-            <div className="relative flex-1">
-              <LinkIcon className="w-3.5 h-3.5 text-[hsl(var(--text-muted))] absolute left-3 top-1/2 -translate-y-1/2" />
-              <Input
-                type="text"
-                placeholder="Paste Video URL (YouTube / MP4 / Web stream) to watch together..."
-                value={videoUrlInput}
-                onChange={(e) => setVideoUrlInput(e.target.value)}
-                className="h-9 text-xs pl-8 bg-[hsl(var(--surface))] border-[hsl(var(--border))]"
-              />
-            </div>
-            <Button type="submit" size="sm" className="h-9 px-4 text-xs font-bold rounded-md bg-[hsl(var(--accent))] text-white hover:bg-[hsl(var(--accent-hover))] cursor-pointer">
-              Watch Video Together 🍿
-            </Button>
-          </form>
+          {/* Video Link Control Input & Quick Presets (Hidden in CHILL Chat Mode) */}
+          {!isChillMode && (
+            <>
+              <form onSubmit={handleLoadVideo} className="mb-2 flex gap-2">
+                <div className="relative flex-1">
+                  <LinkIcon className="w-3.5 h-3.5 text-[hsl(var(--text-muted))] absolute left-3 top-1/2 -translate-y-1/2" />
+                  <Input
+                    type="text"
+                    placeholder="Paste Video URL (YouTube / MP4 / Web stream) to watch together..."
+                    value={videoUrlInput}
+                    onChange={(e) => setVideoUrlInput(e.target.value)}
+                    className="h-9 text-xs pl-8 bg-[hsl(var(--surface))] border-[hsl(var(--border))]"
+                  />
+                </div>
+                <Button type="submit" size="sm" className="h-9 px-4 text-xs font-bold rounded-md bg-[hsl(var(--accent))] text-white hover:bg-[hsl(var(--accent-hover))] cursor-pointer">
+                  Watch Video Together 🍿
+                </Button>
+              </form>
 
-          {/* Main Media Display Viewport */}
+              <div className="flex items-center gap-2 mb-3 overflow-x-auto no-scrollbar py-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 whitespace-nowrap flex items-center gap-1">
+                  🎬 Quick HD Presets:
+                </span>
+                {SAMPLE_VIDEOS.map((sample) => (
+                  <button
+                    key={sample.id}
+                    type="button"
+                    onClick={() => {
+                      setActiveVideoUrl(sample.url);
+                      setVideoUrlInput(sample.url);
+                      setRoomMode("WATCH");
+                      showToast(`🎬 Loaded stream: ${sample.title}`);
+                      if (socketRef.current && roomCode) {
+                        socketRef.current.emit("sync_video", { roomCode, videoUrl: sample.url, videoId: "" });
+                      }
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/15 border border-white/10 text-gray-200 text-[11px] font-semibold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1 hover:scale-105 shadow-sm"
+                  >
+                    <span>{sample.title}</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+
+          {/* Main Display Viewport */}
           <div className="flex-1 flex flex-col items-center justify-center rounded-xl ui-card p-2 border border-[hsl(var(--border))] relative overflow-hidden text-center min-h-[350px] bg-black">
             
             {/* Floating Emoji Reactions Layer */}
@@ -1227,8 +1330,125 @@ export function Room() {
               ))}
             </div>
 
-            {/* STAGE MODE 1: GAME MODE */}
-            {roomMode === "GAME" ? (
+            {/* STAGE MODE 0: CHILL CHAT LOUNGE */}
+            {isChillMode ? (
+              <div className="w-full h-full flex flex-col justify-between p-4 sm:p-5 bg-gradient-to-b from-neutral-900 via-neutral-950 to-black text-white rounded-2xl border border-white/15 relative overflow-hidden shadow-2xl">
+                {/* Header Bar */}
+                <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-3 shrink-0">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 font-bold text-lg">
+                      ⚡
+                    </div>
+                    <div className="text-left">
+                      <h2 className="text-base sm:text-lg font-extrabold text-white flex items-center gap-2">
+                        <span>Random Chill Chat Lounge</span>
+                        <span className="text-xs px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-mono border border-amber-500/30 uppercase">
+                          {urlTopic || "Random"}
+                        </span>
+                      </h2>
+                      <p className="text-xs text-gray-400">Pure text chat • Real-time anonymous pairing</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <div className="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-xl bg-white/10 border border-white/15 text-xs font-semibold">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                      <span>{participants.length} Participant{participants.length === 1 ? '' : 's'}</span>
+                    </div>
+                    <Button
+                      onClick={() => setShowChillModal(true)}
+                      className="h-9 px-4 text-xs font-bold rounded-xl bg-amber-500 text-black hover:bg-amber-400 cursor-pointer gap-1.5 shadow-md"
+                    >
+                      <Zap className="w-3.5 h-3.5 fill-current" />
+                      <span>Next Partner ⏭️</span>
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Center Live Message Feed */}
+                <div className="flex-1 overflow-y-auto space-y-3 p-4 bg-black/50 rounded-xl border border-white/10 mb-3 text-left no-scrollbar min-h-[220px]">
+                  {messages.length === 0 ? (
+                    <div className="h-full flex flex-col items-center justify-center text-center text-gray-400 space-y-2 py-8">
+                      <div className="w-14 h-14 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center text-2xl animate-bounce">
+                        💬
+                      </div>
+                      <h3 className="font-extrabold text-white text-base">Connected to Chill Chat!</h3>
+                      <p className="text-xs text-gray-400 max-w-sm">
+                        Type a message below to start chatting with your partner in real time!
+                      </p>
+                      <div className="flex flex-wrap justify-center gap-1.5 pt-2">
+                        {participants.map(p => (
+                          <span key={p.socketId} className="px-2.5 py-1 rounded-lg bg-white/10 text-[11px] font-semibold text-amber-300">
+                            👤 {p.name} {p.socketId === currentSocketId ? '(You)' : ''}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    messages.map((m) => {
+                      const isMe = m.senderId === currentSocketId;
+                      return (
+                        <div
+                          key={m.id}
+                          className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}
+                        >
+                          <div className="flex items-center gap-2 mb-0.5 text-[10px] text-gray-400 font-mono">
+                            <span className="font-bold text-gray-200">{m.sender}</span>
+                            <span>{m.time}</span>
+                          </div>
+                          <div
+                            className={`max-w-[85%] px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-medium leading-relaxed shadow-sm ${
+                              isMe
+                                ? "bg-[hsl(var(--accent))] text-white rounded-br-none"
+                                : "bg-neutral-800 text-gray-100 border border-white/15 rounded-bl-none"
+                            }`}
+                          >
+                            {m.text}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+
+                {/* Center Input Form */}
+                <form
+                  onSubmit={handleSendMessage}
+                  className="flex items-center gap-2 shrink-0"
+                >
+                  <div className="relative flex-1">
+                    <Input
+                      type="text"
+                      placeholder="Type a message to your partner..."
+                      value={inputMsg}
+                      onChange={(e) => setInputMsg(e.target.value)}
+                      className="h-11 text-xs sm:text-sm pl-4 pr-12 rounded-xl bg-white/10 border-white/15 text-white placeholder:text-gray-400 focus:border-amber-400"
+                    />
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                      {EMOJI_LIST.slice(0, 3).map((emoji) => (
+                        <button
+                          key={emoji}
+                          type="button"
+                          onClick={() => handleSendReaction(emoji)}
+                          className="hover:scale-125 transition-transform text-sm cursor-pointer"
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <Button
+                    type="submit"
+                    disabled={!inputMsg.trim()}
+                    className="h-11 px-5 rounded-xl bg-amber-500 text-black hover:bg-amber-400 font-bold text-xs cursor-pointer gap-1.5 shadow-lg shrink-0 disabled:opacity-50"
+                  >
+                    <span>Send</span>
+                    <Send className="w-4 h-4" />
+                  </Button>
+                </form>
+              </div>
+            ) : roomMode === "GAME" ? (
               <GameStage
                 gameSession={activeGameSession}
                 isHost={isCurrentHost}
@@ -1237,6 +1457,7 @@ export function Room() {
                 onStartGame={handleStartGame}
                 onSubmitAnswer={handleSubmitAnswer}
                 onExitGame={handleStopActiveMedia}
+                onCreateGame={handleCreateGame}
               />
             ) : isScreenSharing ? (
               /* STAGE MODE 2: LOCAL SCREEN SHARE STAGE */
@@ -1504,70 +1725,96 @@ export function Room() {
 
           {/* Action Control Dock */}
           <div className="mt-3 h-14 rounded-xl ui-card px-4 flex items-center justify-between shrink-0 shadow-xs">
-            
-            <div className="flex items-center gap-2">
-              <Button
-                variant={micOn ? "default" : "secondary"}
-                size="sm"
-                onClick={toggleMic}
-                className={`rounded-md cursor-pointer text-xs gap-1.5 ${micOn ? "bg-emerald-600 hover:bg-emerald-700 text-white" : "text-rose-500 bg-rose-500/10"}`}
-              >
-                {micOn ? <Mic className="w-3.5 h-3.5" /> : <MicOff className="w-3.5 h-3.5" />}
-                <span>{micOn ? "Mute" : "Unmute"}</span>
-              </Button>
-
-              <Button
-                variant={videoOn ? "default" : "secondary"}
-                size="sm"
-                onClick={toggleCamera}
-                className={`rounded-md cursor-pointer text-xs gap-1.5 ${videoOn ? "bg-emerald-600 hover:bg-emerald-700 text-white" : "text-rose-500 bg-rose-500/10"}`}
-              >
-                {videoOn ? <Video className="w-3.5 h-3.5" /> : <VideoOff className="w-3.5 h-3.5" />}
-                <span>{videoOn ? "Cam Off" : "Cam On"}</span>
-              </Button>
-
-              <Button
-                variant={isScreenSharing ? "destructive" : "outline"}
-                size="sm"
-                onClick={toggleScreenShare}
-                className="rounded-md cursor-pointer text-xs gap-1.5"
-              >
-                {isScreenSharing ? <StopCircle className="w-3.5 h-3.5" /> : <Monitor className="w-3.5 h-3.5" />}
-                <span>{isScreenSharing ? "Stop Sharing" : "Share Screen"}</span>
-              </Button>
-
-              <Button
-                variant={roomMode === "GAME" ? "default" : "outline"}
-                size="sm"
-                onClick={handleCreateGame}
-                className="rounded-md cursor-pointer text-xs gap-1.5 bg-[hsl(var(--accent))] text-white hover:bg-[hsl(var(--accent-hover))]"
-              >
-                <Gamepad2 className="w-3.5 h-3.5" />
-                <span>Play Game</span>
-              </Button>
-            </div>
-
-            {/* Quick Emoji Reaction Buttons */}
-            <div className="hidden sm:flex items-center gap-1.5 border-l border-r border-[hsl(var(--border))] px-3 py-1">
-              {EMOJI_LIST.map((emoji) => (
-                <button
-                  key={emoji}
-                  type="button"
-                  onClick={() => handleSendReaction(emoji)}
-                  className="hover:scale-125 transition-transform text-lg cursor-pointer px-1"
-                  title={`Send ${emoji}`}
+            {isChillMode ? (
+              <>
+                <Button
+                  onClick={() => setShowChillModal(true)}
+                  className="rounded-md cursor-pointer text-xs gap-1.5 bg-amber-500 text-black hover:bg-amber-400 font-bold"
                 >
-                  {emoji}
-                </button>
-              ))}
-            </div>
+                  <Zap className="w-3.5 h-3.5 fill-current" />
+                  <span>Find Next Partner ⏭️</span>
+                </Button>
+                <div className="flex items-center gap-1.5">
+                  {EMOJI_LIST.map((emoji) => (
+                    <button
+                      key={emoji}
+                      type="button"
+                      onClick={() => handleSendReaction(emoji)}
+                      className="hover:scale-125 transition-transform text-lg cursor-pointer px-1"
+                      title={`Send ${emoji}`}
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant={micOn ? "default" : "secondary"}
+                    size="sm"
+                    onClick={toggleMic}
+                    className={`rounded-md cursor-pointer text-xs gap-1.5 ${micOn ? "bg-emerald-600 hover:bg-emerald-700 text-white" : "text-rose-500 bg-rose-500/10"}`}
+                  >
+                    {micOn ? <Mic className="w-3.5 h-3.5" /> : <MicOff className="w-3.5 h-3.5" />}
+                    <span>{micOn ? "Mute" : "Unmute"}</span>
+                  </Button>
+
+                  <Button
+                    variant={videoOn ? "default" : "secondary"}
+                    size="sm"
+                    onClick={toggleCamera}
+                    className={`rounded-md cursor-pointer text-xs gap-1.5 ${videoOn ? "bg-emerald-600 hover:bg-emerald-700 text-white" : "text-rose-500 bg-rose-500/10"}`}
+                  >
+                    {videoOn ? <Video className="w-3.5 h-3.5" /> : <VideoOff className="w-3.5 h-3.5" />}
+                    <span>{videoOn ? "Cam Off" : "Cam On"}</span>
+                  </Button>
+
+                  <Button
+                    variant={isScreenSharing ? "destructive" : "outline"}
+                    size="sm"
+                    onClick={toggleScreenShare}
+                    className="rounded-md cursor-pointer text-xs gap-1.5"
+                  >
+                    {isScreenSharing ? <StopCircle className="w-3.5 h-3.5" /> : <Monitor className="w-3.5 h-3.5" />}
+                    <span>{isScreenSharing ? "Stop Sharing" : "Share Screen"}</span>
+                  </Button>
+
+                  <Button
+                    variant={roomMode === "GAME" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setShowGameSelector(true)}
+                    className="rounded-md cursor-pointer text-xs gap-1.5 bg-[hsl(var(--accent))] text-white hover:bg-[hsl(var(--accent-hover))]"
+                  >
+                    <Gamepad2 className="w-3.5 h-3.5" />
+                    <span>Play Game</span>
+                  </Button>
+                </div>
+
+                {/* Quick Emoji Reaction Buttons */}
+                <div className="hidden sm:flex items-center gap-1.5 border-l border-r border-[hsl(var(--border))] px-3 py-1">
+                  {EMOJI_LIST.map((emoji) => (
+                    <button
+                      key={emoji}
+                      type="button"
+                      onClick={() => handleSendReaction(emoji)}
+                      className="hover:scale-125 transition-transform text-lg cursor-pointer px-1"
+                      title={`Send ${emoji}`}
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
 
           </div>
 
         </main>
 
-        {/* Responsive Drawer Sidebar: Chat & Participants */}
-        {showChat && (
+        {/* Responsive Drawer Sidebar: Chat & Participants (Hidden in CHILL Mode as Center Stage is full Chat Lounge) */}
+        {showChat && !isChillMode && (
           <aside className="w-full sm:w-80 border-l border-[hsl(var(--border))] bg-[hsl(var(--surface))] flex flex-col h-full shrink-0 z-20 absolute sm:relative right-0 inset-y-0 shadow-xl sm:shadow-none transition-all duration-200">
             
             {/* Sidebar Header */}
@@ -1703,6 +1950,24 @@ export function Room() {
           </div>
         </div>
       )}
+
+      {/* Game Selection Picker Modal */}
+      <GameSelectionModal
+        isOpen={showGameSelector}
+        onClose={() => setShowGameSelector(false)}
+        onSelectGame={(gameId) => handleCreateGame(gameId)}
+      />
+
+      {/* Random Chill Match Modal */}
+      <ChillMatchModal
+        isOpen={showChillModal}
+        onClose={() => setShowChillModal(false)}
+        onStartMatch={(name, topic, code) => {
+          setShowChillModal(false);
+          const targetCode = code || `CHILL-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+          navigate(`/r/${targetCode}?name=${encodeURIComponent(name)}&topic=${encodeURIComponent(topic)}`);
+        }}
+      />
 
     </div>
   );

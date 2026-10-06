@@ -1,6 +1,6 @@
 export type Role = 'HOST' | 'MODERATOR' | 'MEMBER' | 'GUEST';
 export type RoomStatus = 'CREATED' | 'ACTIVE' | 'IDLE' | 'EXPIRED' | 'ENDED';
-export type RoomMode = 'VC' | 'WATCH' | 'SCREEN_SHARE' | 'MUSIC' | 'GAME';
+export type RoomMode = 'VC' | 'WATCH' | 'SCREEN_SHARE' | 'MUSIC' | 'GAME' | 'CHILL';
 export type Personality = 'movie-night' | 'music-party' | 'meme-night' | 'gaming' | 'chill' | 'couple' | 'party' | 'study';
 
 export type Capability =
@@ -47,6 +47,8 @@ export interface Participant {
   role?: Role;
 }
 
+export type GameId = 'trivia-clash' | 'word-dash' | 'emoji-riddle' | 'math-blitz' | 'memory-matrix';
+
 export interface GamePlayer {
   socketId: string;
   name: string;
@@ -63,10 +65,15 @@ export interface GameQuestion {
   options: string[];
   correctIndex: number;
   timeLimitSeconds: number;
+  category?: string;
+  hint?: string;
+  emojiCode?: string;
 }
 
 export interface GameSession {
-  gameId: 'trivia-clash' | 'word-dash';
+  gameId: GameId;
+  title: string;
+  description?: string;
   sessionId: string;
   status: 'LOBBY' | 'IN_PROGRESS' | 'FINISHED';
   players: GamePlayer[];
@@ -74,6 +81,7 @@ export interface GameSession {
   maxPlayers: number;
   minPlayers: number;
   currentQuestionIndex: number;
+  totalQuestions: number;
   currentQuestion?: GameQuestion;
   timerSeconds: number;
   winnerSocketId?: string;

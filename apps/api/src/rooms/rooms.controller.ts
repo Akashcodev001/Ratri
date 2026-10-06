@@ -1,6 +1,8 @@
 import { Controller, Post, Get, Body, Param, Ip, BadRequestException } from '@nestjs/common';
 import { RoomsService } from './rooms.service';
 import { AuthService } from '../auth/auth.service';
+import { CreateRoomDto } from './dto/create-room.dto';
+import { JoinRoomDto } from './dto/join-room.dto';
 import * as crypto from 'crypto';
 
 @Controller('rooms')
@@ -11,10 +13,10 @@ export class RoomsController {
   ) {}
 
   @Post()
-  async createRoom(@Body() body: any, @Ip() ip: string) {
+  async createRoom(@Body() body: CreateRoomDto, @Ip() ip: string) {
     const ipHash = crypto.createHash('sha256').update(ip || 'unknown').digest('hex');
     const room = await this.roomsService.createRoom({
-      name: body.name || 'New Room',
+      name: body.name.trim(),
       personality: body.personality || 'chill',
       ipHash,
     });
@@ -28,7 +30,11 @@ export class RoomsController {
 
   @Get(':code')
   async getRoom(@Param('code') code: string) {
-    const room = await this.roomsService.getRoomByCode(code);
+    const cleanCode = String(code || '').trim();
+    if (!cleanCode) {
+      throw new BadRequestException('INVALID_ROOM_CODE');
+    }
+    const room = await this.roomsService.getRoomByCode(cleanCode);
     return {
       roomCode: room.roomCode,
       name: room.name,
@@ -43,23 +49,24 @@ export class RoomsController {
   }
 
   @Post(':code/join')
-  async joinRoom(@Param('code') code: string, @Body() body: { displayName: string, password?: string }, @Ip() ip: string) {
-    if (!body.displayName || body.displayName.trim().length < 1 || body.displayName.trim().length > 24) {
+  async joinRoom(@Param('code') code: string, @Body() body: JoinRoomDto, @Ip() ip: string) {
+    const cleanCode = String(code || '').trim();
+    if (!cleanCode) {
+      throw new BadRequestException('INVALID_ROOM_CODE');
+    }
+    const cleanDisplayName = body.displayName.trim();
+    if (cleanDisplayName.length < 1 || cleanDisplayName.length > 24) {
       throw new BadRequestException('NAME_INVALID');
     }
-    const room = await this.roomsService.getRoomByCode(code);
+    const room = await this.roomsService.getRoomByCode(cleanCode);
     
     if (room.settings.locked) {
       throw new BadRequestException('ROOM_LOCKED');
     }
 
-    // A real implementation would verify password here if required
-
     const memberId = crypto.randomUUID();
     const ipHash = crypto.createHash('sha256').update(ip || 'unknown').digest('hex');
     const session = await this.authService.generateGuestSession((room as any)._id.toString(), memberId, ipHash);
-
-    // Normally we would insert into room_members here
 
     return {
       session: {
@@ -68,7 +75,7 @@ export class RoomsController {
       },
       member: {
         memberId,
-        displayName: body.displayName.trim(),
+        displayName: cleanDisplayName,
         role: 'GUEST'
       }
     };

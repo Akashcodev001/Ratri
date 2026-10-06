@@ -39,6 +39,8 @@ lerna-debug.log*
 coverage/
 .nyc_output/
 .vitest/
+test/
+tests/
 
 # OS & Editor Files
 .DS_Store

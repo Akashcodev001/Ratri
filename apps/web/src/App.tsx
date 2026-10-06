@@ -5,6 +5,7 @@ import { Header } from "./components/Header";
 import { SmartSuspense } from "./components/loading/SmartSuspense";
 import { HomeSkeleton } from "./components/skeletons/HomeSkeleton";
 import { RoomSkeleton } from "./components/skeletons/RoomSkeleton";
+import { RatriIntro } from "./components/intro";
 
 // Route-level Code Splitting for Production Bundle Optimization
 const Home = React.lazy(() => import("./routes/Home").then(m => ({ default: m.Home })));
@@ -107,6 +108,7 @@ const router = createBrowserRouter([
 function App() {
   return (
     <ThemeProvider>
+      <RatriIntro />
       <RouterProvider router={router} />
     </ThemeProvider>
   );

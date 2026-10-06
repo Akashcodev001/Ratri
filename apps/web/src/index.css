@@ -10,8 +10,8 @@
     --border: 220 10% 86%;
     --border-strong: 220 10% 72%;
     --text: 224 35% 10%;
-    --text-secondary: 220 12% 40%;
-    --text-muted: 220 10% 58%;
+    --text-secondary: 220 15% 30%;
+    --text-muted: 220 15% 40%;
     
     /* Energetic Coral/Crimson Accent */
     --accent: 350 100% 60%;
@@ -31,7 +31,7 @@
     --border-strong: 224 15% 26%;
     --text: 210 20% 98%;
     --text-secondary: 215 12% 70%;
-    --text-muted: 215 10% 48%;
+    --text-muted: 215 15% 65%;
     
     --accent: 350 100% 60%;
     --accent-hover: 350 100% 65%;

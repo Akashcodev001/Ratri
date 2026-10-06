@@ -54,7 +54,9 @@ export class RoomsService {
   }
 
   async getRoomByCode(roomCode: string): Promise<Room> {
-    const room = await this.roomModel.findOne({ roomCode: roomCode.toUpperCase() }).exec();
+    const safeCode = String(roomCode || '').trim().toUpperCase();
+    if (!safeCode) throw new NotFoundException('Room not found');
+    const room = await this.roomModel.findOne({ roomCode: safeCode }).exec();
     if (!room) throw new NotFoundException('Room not found');
     if (room.status === 'EXPIRED' || room.status === 'ENDED') {
         throw new ConflictException('ROOM_ENDED');

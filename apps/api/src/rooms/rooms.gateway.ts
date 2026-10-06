@@ -9,8 +9,9 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { Logger } from '@nestjs/common';
-import { RoomMode, Participant, GameSession } from '@ratri/types';
+import { RoomMode, Participant, GameSession, GameId } from '@ratri/types';
 import { GameEngine } from './game-engine';
+import { AuthService } from '../auth/auth.service';
 
 interface ServerRoomState {
   roomCode: string;
@@ -27,9 +28,17 @@ interface ServerRoomState {
   gameTimerInterval?: any;
 }
 
+const getCorsOrigin = () => {
+  const envOrigin = process.env.CLIENT_ORIGIN;
+  if (envOrigin) {
+    return envOrigin.split(',').map(o => o.trim());
+  }
+  return ['http://localhost:5173', 'http://127.0.0.1:5173'];
+};
+
 @WebSocketGateway({
   cors: {
-    origin: '*',
+    origin: getCorsOrigin(),
     credentials: true,
   },
   transports: ['polling', 'websocket'],
@@ -43,9 +52,22 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private logger = new Logger('RoomsGateway');
   private roomParticipants = new Map<string, Map<string, Participant>>();
   private roomStates = new Map<string, ServerRoomState>();
+  private chillQueue: { socketId: string; displayName: string; topic: string }[] = [];
 
-  handleConnection(client: Socket) {
-    this.logger.log(`Client connected: ${client.id}`);
+  constructor(private readonly authService: AuthService) {}
+
+  async handleConnection(client: Socket) {
+    const rawToken = client.handshake.auth?.token || client.handshake.headers?.authorization;
+    if (rawToken) {
+      const token = typeof rawToken === 'string' && rawToken.startsWith('Bearer ') ? rawToken.slice(7) : rawToken;
+      const userPayload = await this.authService.verifyToken(token as string);
+      if (userPayload) {
+        client.data.user = userPayload;
+        this.logger.log(`Client authenticated: ${client.id} (Member: ${userPayload.mid}, Room: ${userPayload.rid})`);
+        return;
+      }
+    }
+    this.logger.log(`Client connected (Guest/Unauthenticated): ${client.id}`);
   }
 
   handleDisconnect(client: Socket) {
@@ -53,10 +75,43 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.leaveAllRooms(client);
   }
 
+  private sanitizeString(val: any, maxLen: number = 100): string {
+    if (typeof val !== 'string') return '';
+    return val
+      .replace(/<[^>]*>/g, '') // Strip HTML tags
+      .trim()
+      .slice(0, maxLen);
+  }
+
+  private getClientRoomCode(client: Socket): string | null {
+    for (const [code, participantsMap] of this.roomParticipants.entries()) {
+      if (participantsMap.has(client.id)) {
+        return code;
+      }
+    }
+    return null;
+  }
+
+  private isRoomMember(client: Socket, roomCode: string): boolean {
+    const code = this.sanitizeString(roomCode, 20).toUpperCase();
+    if (!code) return false;
+    const participantsMap = this.roomParticipants.get(code);
+    return !!participantsMap?.has(client.id);
+  }
+
+  private isHost(client: Socket, roomCode: string): boolean {
+    const code = this.sanitizeString(roomCode, 20).toUpperCase();
+    if (!code) return false;
+    const participantsMap = this.roomParticipants.get(code);
+    const participant = participantsMap?.get(client.id);
+    return participant?.isHost === true;
+  }
+
   private getOrCreateRoomState(code: string): ServerRoomState {
-    if (!this.roomStates.has(code)) {
-      this.roomStates.set(code, {
-        roomCode: code,
+    const safeCode = this.sanitizeString(code, 20).toUpperCase();
+    if (!this.roomStates.has(safeCode)) {
+      this.roomStates.set(safeCode, {
+        roomCode: safeCode,
         mode: 'VC',
         previousMode: 'VC',
         videoUrl: '',
@@ -65,13 +120,14 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
         lastUpdated: Date.now(),
       });
     }
-    return this.roomStates.get(code)!;
+    return this.roomStates.get(safeCode)!;
   }
 
   private broadcastRoomMode(code: string) {
-    const state = this.getOrCreateRoomState(code);
-    this.server.to(code).emit('room_mode_changed', {
-      roomCode: code,
+    const safeCode = this.sanitizeString(code, 20).toUpperCase();
+    const state = this.getOrCreateRoomState(safeCode);
+    this.server.to(safeCode).emit('room_mode_changed', {
+      roomCode: safeCode,
       mode: state.mode,
       previousMode: state.previousMode,
       videoUrl: state.videoUrl,
@@ -87,11 +143,17 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @SubscribeMessage('join_room')
   handleJoinRoom(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: { roomCode: string; username?: string }
+    @MessageBody() data: { roomCode?: string; username?: string; name?: string }
   ) {
-    const { roomCode, username } = data;
-    const code = roomCode.toUpperCase();
-    
+    const rawCode = data?.roomCode || '';
+    const code = this.sanitizeString(rawCode, 20).toUpperCase();
+    if (!code) {
+      return { success: false, error: 'INVALID_ROOM_CODE' };
+    }
+
+    const rawName = data?.name || data?.username || '';
+    const sanitizedName = this.sanitizeString(rawName, 24);
+
     client.join(code);
 
     if (!this.roomParticipants.has(code)) {
@@ -100,13 +162,16 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     const participantsMap = this.roomParticipants.get(code)!;
     const isHost = participantsMap.size === 0;
+    const isChill = code.startsWith('CHILL');
+
+    const participantName = sanitizedName || (isHost ? 'Host' : `Guest ${participantsMap.size + 1}`);
 
     const participant: Participant = {
       id: client.id,
       socketId: client.id,
-      name: username || (isHost ? 'Host' : `Guest ${participantsMap.size + 1}`),
+      name: participantName,
       isHost,
-      micOn: true,
+      micOn: !isChill,
       videoOn: false,
       isScreenSharing: false,
     };
@@ -147,7 +212,12 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { roomCode: string; mode: RoomMode }
   ) {
-    const code = data.roomCode.toUpperCase();
+    const code = this.sanitizeString(data?.roomCode, 20).toUpperCase();
+    if (!this.isHost(client, code)) {
+      this.logger.warn(`Unauthorized change_room_mode attempt by socket ${client.id} in room ${code}`);
+      return;
+    }
+
     const state = this.getOrCreateRoomState(code);
 
     if (state.mode !== data.mode) {
@@ -163,7 +233,11 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { roomCode: string }
   ) {
-    const code = data.roomCode.toUpperCase();
+    const code = this.sanitizeString(data?.roomCode, 20).toUpperCase();
+    if (!this.isRoomMember(client, code)) {
+      return;
+    }
+
     const state = this.getOrCreateRoomState(code);
 
     this.logger.log(`Stopping active media in room ${code}. Mode was ${state.mode}`);
@@ -195,8 +269,14 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { roomCode: string; text: string }
   ) {
-    const { roomCode, text } = data;
-    const code = roomCode.toUpperCase();
+    const code = this.sanitizeString(data?.roomCode, 20).toUpperCase();
+    if (!this.isRoomMember(client, code)) {
+      return;
+    }
+
+    const sanitizedText = this.sanitizeString(data?.text, 1000);
+    if (!sanitizedText) return;
+
     const participantsMap = this.roomParticipants.get(code);
     const sender = participantsMap?.get(client.id);
 
@@ -204,7 +284,7 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       id: Date.now().toString(),
       sender: sender ? sender.name : 'Guest',
       senderId: client.id,
-      text,
+      text: sanitizedText,
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
 
@@ -216,29 +296,41 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { roomCode: string; micOn: boolean; videoOn: boolean; isScreenSharing?: boolean }
   ) {
-    const { roomCode, micOn, videoOn, isScreenSharing } = data;
-    const code = roomCode.toUpperCase();
+    const code = this.sanitizeString(data?.roomCode, 20).toUpperCase();
+    if (!this.isRoomMember(client, code)) {
+      return;
+    }
+
     const participantsMap = this.roomParticipants.get(code);
     const participant = participantsMap?.get(client.id);
 
     if (participant) {
-      participant.micOn = micOn;
-      participant.videoOn = videoOn;
-      if (typeof isScreenSharing === 'boolean') {
-        participant.isScreenSharing = isScreenSharing;
+      participant.micOn = Boolean(data.micOn);
+      participant.videoOn = Boolean(data.videoOn);
+      if (typeof data.isScreenSharing === 'boolean') {
+        participant.isScreenSharing = data.isScreenSharing;
       }
       const participantsList = Array.from(participantsMap!.values());
       this.server.to(code).emit('room_participants', participantsList);
     }
   }
 
-  /* --- WebRTC Signaling Relays for Live Camera & Screen Sharing --- */
+  /* --- WebRTC Signaling Relays with Cross-Room Prevention --- */
 
   @SubscribeMessage('webrtc_offer')
   handleOffer(
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { targetSocketId: string; offer: any; isScreenShare?: boolean }
   ) {
+    const senderRoomCode = this.getClientRoomCode(client);
+    if (!senderRoomCode) return;
+
+    const roomMembers = this.roomParticipants.get(senderRoomCode);
+    if (!roomMembers || !roomMembers.has(data?.targetSocketId)) {
+      this.logger.warn(`WebRTC offer blocked: socket ${client.id} attempted signaling to target ${data?.targetSocketId} outside room ${senderRoomCode}`);
+      return;
+    }
+
     this.server.to(data.targetSocketId).emit('webrtc_offer', {
       senderSocketId: client.id,
       offer: data.offer,
@@ -251,6 +343,15 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { targetSocketId: string; answer: any }
   ) {
+    const senderRoomCode = this.getClientRoomCode(client);
+    if (!senderRoomCode) return;
+
+    const roomMembers = this.roomParticipants.get(senderRoomCode);
+    if (!roomMembers || !roomMembers.has(data?.targetSocketId)) {
+      this.logger.warn(`WebRTC answer blocked: socket ${client.id} attempted signaling to target ${data?.targetSocketId} outside room ${senderRoomCode}`);
+      return;
+    }
+
     this.server.to(data.targetSocketId).emit('webrtc_answer', {
       senderSocketId: client.id,
       answer: data.answer,
@@ -262,6 +363,14 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { targetSocketId: string; candidate: any }
   ) {
+    const senderRoomCode = this.getClientRoomCode(client);
+    if (!senderRoomCode) return;
+
+    const roomMembers = this.roomParticipants.get(senderRoomCode);
+    if (!roomMembers || !roomMembers.has(data?.targetSocketId)) {
+      return;
+    }
+
     this.server.to(data.targetSocketId).emit('webrtc_ice_candidate', {
       senderSocketId: client.id,
       candidate: data.candidate,
@@ -273,7 +382,11 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { roomCode: string; isSharing: boolean }
   ) {
-    const code = data.roomCode.toUpperCase();
+    const code = this.sanitizeString(data?.roomCode, 20).toUpperCase();
+    if (!this.isRoomMember(client, code)) {
+      return;
+    }
+
     const state = this.getOrCreateRoomState(code);
     const participantsMap = this.roomParticipants.get(code);
     const presenter = participantsMap?.get(client.id);
@@ -294,7 +407,7 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.broadcastRoomMode(code);
     client.to(code).emit('remote_screen_status', {
       senderSocketId: client.id,
-      isSharing: data.isSharing,
+      isSharing: Boolean(data.isSharing),
     });
   }
 
@@ -303,10 +416,17 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { roomCode: string; emoji: string }
   ) {
-    const code = data.roomCode.toUpperCase();
+    const code = this.sanitizeString(data?.roomCode, 20).toUpperCase();
+    if (!this.isRoomMember(client, code)) {
+      return;
+    }
+
+    const cleanEmoji = this.sanitizeString(data?.emoji, 16);
+    if (!cleanEmoji) return;
+
     this.server.to(code).emit('new_reaction', {
       id: Date.now().toString() + Math.random(),
-      emoji: data.emoji,
+      emoji: cleanEmoji,
       senderId: client.id,
     });
   }
@@ -316,21 +436,28 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { roomCode: string; videoUrl: string; videoId?: string }
   ) {
-    const code = data.roomCode.toUpperCase();
+    const code = this.sanitizeString(data?.roomCode, 20).toUpperCase();
+    if (!this.isRoomMember(client, code)) {
+      return;
+    }
+
+    const cleanVideoUrl = this.sanitizeString(data?.videoUrl, 500);
+    const cleanVideoId = this.sanitizeString(data?.videoId, 100);
+
     const state = this.getOrCreateRoomState(code);
 
     state.previousMode = state.mode;
     state.mode = 'WATCH';
-    state.videoUrl = data.videoUrl;
-    state.videoId = data.videoId || '';
+    state.videoUrl = cleanVideoUrl;
+    state.videoId = cleanVideoId;
     state.currentTime = 0;
     state.isPlaying = true;
     state.lastUpdated = Date.now();
 
     this.broadcastRoomMode(code);
     this.server.to(code).emit('sync_video', {
-      videoUrl: data.videoUrl,
-      videoId: data.videoId || '',
+      videoUrl: cleanVideoUrl,
+      videoId: cleanVideoId,
       senderId: client.id,
     });
   }
@@ -340,7 +467,11 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { roomCode: string; action: 'play' | 'pause' | 'seek'; currentTime?: number }
   ) {
-    const code = data.roomCode.toUpperCase();
+    const code = this.sanitizeString(data?.roomCode, 20).toUpperCase();
+    if (!this.isRoomMember(client, code)) {
+      return;
+    }
+
     const state = this.getOrCreateRoomState(code);
     if (state) {
       if (data.action === 'play') {
@@ -348,8 +479,8 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       } else if (data.action === 'pause') {
         state.isPlaying = false;
       }
-      if (typeof data.currentTime === 'number') {
-        state.currentTime = data.currentTime;
+      if (typeof data.currentTime === 'number' && !isNaN(data.currentTime)) {
+        state.currentTime = Math.max(0, data.currentTime);
       }
       state.lastUpdated = Date.now();
     }
@@ -366,14 +497,19 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @SubscribeMessage('game_create')
   handleGameCreate(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: { roomCode: string }
+    @MessageBody() data: { roomCode: string; gameId?: GameId }
   ) {
-    const code = data.roomCode.toUpperCase();
+    const code = this.sanitizeString(data?.roomCode, 20).toUpperCase();
+    if (!this.isHost(client, code)) {
+      return;
+    }
+
     const state = this.getOrCreateRoomState(code);
     const participantsMap = this.roomParticipants.get(code);
     const host = participantsMap?.get(client.id);
 
-    state.gameSession = GameEngine.createTriviaSession(client.id, host?.name || 'Host');
+    const selectedGame = data.gameId || 'trivia-clash';
+    state.gameSession = GameEngine.createSession(selectedGame, client.id, host?.name || 'Host');
     state.previousMode = state.mode;
     state.mode = 'GAME';
 
@@ -385,7 +521,11 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { roomCode: string }
   ) {
-    const code = data.roomCode.toUpperCase();
+    const code = this.sanitizeString(data?.roomCode, 20).toUpperCase();
+    if (!this.isRoomMember(client, code)) {
+      return;
+    }
+
     const state = this.getOrCreateRoomState(code);
     const participantsMap = this.roomParticipants.get(code);
     const user = participantsMap?.get(client.id);
@@ -401,7 +541,11 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { roomCode: string }
   ) {
-    const code = data.roomCode.toUpperCase();
+    const code = this.sanitizeString(data?.roomCode, 20).toUpperCase();
+    if (!this.isHost(client, code)) {
+      return;
+    }
+
     const state = this.getOrCreateRoomState(code);
 
     if (state.gameSession && state.gameSession.status === 'LOBBY') {
@@ -438,7 +582,11 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { roomCode: string; questionIndex: number; optionIndex: number }
   ) {
-    const code = data.roomCode.toUpperCase();
+    const code = this.sanitizeString(data?.roomCode, 20).toUpperCase();
+    if (!this.isRoomMember(client, code)) {
+      return;
+    }
+
     const state = this.getOrCreateRoomState(code);
 
     if (state.gameSession && state.gameSession.status === 'IN_PROGRESS') {
@@ -459,7 +607,81 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
 
+  /* --- Server-Authoritative Random Chill Matchmaking Handlers --- */
+
+  @SubscribeMessage('join_chill_queue')
+  handleJoinChillQueue(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { displayName: string; topic: string }
+  ) {
+    const displayName = this.sanitizeString(data?.displayName, 24) || `ChillUser_${client.id.substring(0, 4)}`;
+    const topic = this.sanitizeString(data?.topic, 40) || 'random';
+
+    // Remove client if already in queue
+    this.chillQueue = this.chillQueue.filter(q => q.socketId !== client.id);
+
+    // 1. Check if another user is waiting in queue
+    const partnerIndex = this.chillQueue.findIndex(q => q.socketId !== client.id);
+
+    if (partnerIndex !== -1) {
+      const partner = this.chillQueue.splice(partnerIndex, 1)[0];
+      const matchedRoomCode = `CHILL-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+
+      // Initialize room state as CHILL
+      const state = this.getOrCreateRoomState(matchedRoomCode);
+      state.mode = 'CHILL';
+
+      this.server.to(partner.socketId).emit('chill_matched', {
+        roomCode: matchedRoomCode,
+        partnerName: displayName,
+        topic,
+      });
+
+      client.emit('chill_matched', {
+        roomCode: matchedRoomCode,
+        partnerName: partner.displayName,
+        topic,
+      });
+      return;
+    }
+
+    // 2. Check if an active CHILL room exists with 1 waiting participant
+    for (const [code, participantsMap] of this.roomParticipants.entries()) {
+      if (code.startsWith('CHILL-') && participantsMap.size === 1 && !participantsMap.has(client.id)) {
+        const waitingUser = Array.from(participantsMap.values())[0];
+        
+        client.emit('chill_matched', {
+          roomCode: code,
+          partnerName: waitingUser.name,
+          topic,
+        });
+
+        this.server.to(waitingUser.socketId).emit('chill_matched', {
+          roomCode: code,
+          partnerName: displayName,
+          topic,
+        });
+        return;
+      }
+    }
+
+    // 3. Otherwise assign a room code, add to queue, and send chill_waiting
+    const roomCode = `CHILL-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+    this.chillQueue.push({
+      socketId: client.id,
+      displayName,
+      topic,
+    });
+    client.emit('chill_waiting', { status: 'SEARCHING', roomCode });
+  }
+
+  @SubscribeMessage('leave_chill_queue')
+  handleLeaveChillQueue(@ConnectedSocket() client: Socket) {
+    this.chillQueue = this.chillQueue.filter(q => q.socketId !== client.id);
+  }
+
   private leaveAllRooms(client: Socket) {
+    this.chillQueue = this.chillQueue.filter(q => q.socketId !== client.id);
     for (const [code, participantsMap] of this.roomParticipants.entries()) {
       if (participantsMap.has(client.id)) {
         const participant = participantsMap.get(client.id);

@@ -2,8 +2,8 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
+import { ChillMatchModal } from "../components/ChillMatchModal";
 import { 
-  Play, 
   Users, 
   MessageSquare, 
   ArrowRight, 
@@ -11,10 +11,17 @@ import {
   Zap, 
   Volume2,
   Mic,
-  ShieldCheck
+  ShieldCheck,
+  Sparkles,
+  Music,
+  Heart,
+  Bell,
+  CheckCircle2,
+  Globe
 } from "lucide-react";
 import { api } from "../services/api";
 import { prefetchRoomChunk } from "../App";
+import heroShowcaseImg from "../assets/hero_showcase.jpg";
 
 export function Home() {
   const navigate = useNavigate();
@@ -22,8 +29,16 @@ export function Home() {
   const [roomName, setRoomName] = useState("");
   const [roomType, setRoomType] = useState<"chill" | "watch" | "talk">("watch");
   const [loading, setLoading] = useState(false);
+  const [showChillModal, setShowChillModal] = useState(false);
+  const [notifyEmail, setNotifyEmail] = useState("");
+  const [subscribed, setSubscribed] = useState(false);
 
   const handleCreateRoom = async () => {
+    if (roomType === "chill") {
+      setShowChillModal(true);
+      return;
+    }
+
     prefetchRoomChunk();
     try {
       setLoading(true);
@@ -37,6 +52,13 @@ export function Home() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleStartChillMatch = (displayName: string, topic: string, matchedRoomCode?: string) => {
+    setShowChillModal(false);
+    prefetchRoomChunk();
+    const chillCode = matchedRoomCode || `CHILL-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+    navigate(`/r/${chillCode}?name=${encodeURIComponent(displayName)}&topic=${encodeURIComponent(topic)}`);
   };
 
   const handleJoinRoom = async (e: React.FormEvent) => {
@@ -58,13 +80,13 @@ export function Home() {
   };
 
   return (
-    <div className="min-h-[calc(100vh-3.5rem)] flex flex-col justify-between px-4 sm:px-6 lg:px-8 py-8 lg:py-12 max-w-7xl mx-auto">
+    <div className="min-h-[calc(100vh-3.5rem)] flex flex-col justify-between px-4 sm:px-6 lg:px-8 py-8 lg:py-12 max-w-7xl mx-auto text-left">
       
       {/* Hero Section: Split 2-Column Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-8 items-center my-auto">
         
         {/* Left Column: Headline & Action Panel */}
-        <div className="lg:col-span-6 space-y-6 text-left">
+        <div className="lg:col-span-6 space-y-6">
           <div className="space-y-4">
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-[hsl(var(--text))] leading-[1.1]">
               The cozy corner to <br />
@@ -110,7 +132,10 @@ export function Home() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setRoomType("chill")}
+                  onClick={() => {
+                    setRoomType("chill");
+                    setShowChillModal(true);
+                  }}
                   className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-md text-xs font-bold transition-all cursor-pointer ${
                     roomType === "chill"
                       ? "bg-[hsl(var(--accent))] text-white shadow-sm"
@@ -127,19 +152,19 @@ export function Home() {
             <div className="space-y-3">
               <Input
                 type="text"
-                placeholder="Room Title (e.g. Anime Watch Party)"
+                placeholder={roomType === "chill" ? "Random Anonymous Pairing Lounge" : "Room Title (e.g. Anime Watch Party)"}
                 value={roomName}
                 onChange={(e) => setRoomName(e.target.value)}
-                className="h-11 text-sm px-3.5 rounded-lg bg-[hsl(var(--surface-elevated))] border-[hsl(var(--border))]"
+                className="h-11 text-sm px-3.5 rounded-lg bg-[hsl(var(--surface-sunken))] border-[hsl(var(--border-strong))] text-[hsl(var(--text))] placeholder:text-[hsl(var(--text-muted))]"
               />
               
               <Button
                 size="lg"
                 onClick={handleCreateRoom}
                 disabled={loading}
-                className="w-full h-11 text-sm font-bold rounded-lg bg-[hsl(var(--accent))] text-white hover:bg-[hsl(var(--accent-hover))] transition-colors group cursor-pointer"
+                className="w-full h-11 text-sm font-bold rounded-lg bg-[hsl(var(--accent))] text-white hover:bg-[hsl(var(--accent-hover))] transition-colors group cursor-pointer shadow-md"
               >
-                <span>{loading ? "Creating..." : "Create Instant Room"}</span>
+                <span>{loading ? "Creating..." : roomType === "chill" ? "Start Random Chill Match ⚡" : "Create Instant Room"}</span>
                 <ArrowRight className="w-4 h-4 ml-1.5 group-hover:translate-x-1 transition-transform" />
               </Button>
             </div>
@@ -156,7 +181,7 @@ export function Home() {
                 placeholder="ROOM CODE (e.g. M7HFF7)"
                 value={roomCode}
                 onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
-                className="h-10 uppercase tracking-widest text-center font-mono font-bold text-xs bg-[hsl(var(--surface-elevated))] border-[hsl(var(--border))]"
+                className="h-10 uppercase tracking-widest text-center font-mono font-bold text-xs bg-[hsl(var(--surface-sunken))] border-[hsl(var(--border-strong))] text-[hsl(var(--text))] placeholder:text-[hsl(var(--text-muted))]"
                 maxLength={8}
                 disabled={loading}
               />
@@ -184,29 +209,47 @@ export function Home() {
 
         </div>
 
-        {/* Right Column: Interactive Room Preview Showcase Mockup */}
+        {/* Right Column: Interactive Realistic Video Stage Mockup */}
         <div className="lg:col-span-6">
-          <div className="rat-card p-4 sm:p-5 relative overflow-hidden bg-black border-[hsl(var(--border-strong))] text-left shadow-2xl">
+          <div className="rounded-2xl p-4 sm:p-5 relative overflow-hidden bg-neutral-950 border border-neutral-800 text-white text-left shadow-2xl">
             
             {/* Mock Header */}
-            <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-3 text-xs text-gray-300">
+            <div className="flex items-center justify-between border-b border-white/15 pb-3 mb-3 text-xs text-gray-200">
               <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                <span className="font-mono font-bold tracking-wide text-white">ROOM #MOVIE-NIGHT</span>
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="font-mono font-extrabold tracking-wide text-white text-xs sm:text-sm">ROOM #MOVIE-NIGHT</span>
               </div>
-              <div className="flex items-center gap-2 text-[11px] bg-white/10 px-2.5 py-0.5 rounded-full">
+              <div className="flex items-center gap-2 text-[11px] bg-white/15 border border-white/20 text-white font-bold px-2.5 py-1 rounded-full shadow-xs">
                 <Users className="w-3 h-3 text-[hsl(var(--accent))]" />
-                <span>3 Watching</span>
+                <span>3 Watching Live</span>
               </div>
             </div>
 
-            {/* Video Stage Mockup */}
-            <div className="relative aspect-video rounded-lg bg-neutral-900 border border-white/10 overflow-hidden flex items-center justify-center group">
-              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/20" />
+            {/* REAL Working HD Video Stage Mockup */}
+            <div className="relative aspect-video rounded-lg bg-neutral-900 border border-white/10 overflow-hidden flex items-center justify-center group shadow-inner">
+              <img
+                src={heroShowcaseImg}
+                alt="Live Watch Party Showcase"
+                className="w-full h-full object-cover absolute inset-0 z-0"
+              />
+              <video
+                src="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
+                poster={heroShowcaseImg}
+                autoPlay
+                loop
+                muted
+                playsInline
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                }}
+                className="w-full h-full object-cover relative z-10 opacity-90 hover:opacity-100 transition-opacity"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/20 pointer-events-none z-20" />
               
-              {/* Play Icon Placeholder */}
-              <div className="w-14 h-14 rounded-full bg-[hsl(var(--accent))] text-white flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
-                <Play className="w-6 h-6 fill-current ml-1" />
+              {/* Live Overlay Badge */}
+              <div className="absolute top-3 left-3 bg-red-600/90 text-white font-bold text-[10px] px-2 py-0.5 rounded flex items-center gap-1 shadow">
+                <Sparkles className="w-3 h-3 animate-spin" />
+                <span>LIVE SYNCED HD STREAM</span>
               </div>
 
               {/* Floating Emojis Reaction Layer */}
@@ -219,7 +262,7 @@ export function Home() {
               <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between text-xs text-white">
                 <div className="flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-red-500" />
-                  <span className="font-mono text-[11px]">01:42 / 12:30 • SYNCED</span>
+                  <span className="font-mono text-[11px]">01:42 / 09:56 • SYNCED</span>
                 </div>
                 <div className="text-[10px] bg-emerald-500/20 text-emerald-400 font-bold px-2 py-0.5 rounded border border-emerald-500/30">
                   1080p WebRTC
@@ -309,6 +352,221 @@ export function Home() {
           </p>
         </div>
       </div>
+
+      {/* SONG & MUSIC LOUNGE FEATURE (COMING SOON) */}
+      <div className="mt-16 rounded-3xl bg-neutral-900/95 border border-neutral-800 p-6 sm:p-8 relative overflow-hidden shadow-2xl text-left">
+        {/* Ambient Glows */}
+        <div className="absolute -top-24 -right-24 w-72 h-72 rounded-full bg-rose-500/10 blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-24 -left-24 w-72 h-72 rounded-full bg-amber-500/10 blur-3xl pointer-events-none" />
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center relative z-10">
+          
+          <div className="lg:col-span-7 space-y-4">
+            <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-rose-500/10 border border-rose-500/30 text-rose-400 font-bold text-xs tracking-wide">
+              <Music className="w-3.5 h-3.5 text-rose-400 animate-spin" style={{ animationDuration: '4s' }} />
+              <span>SONG & MUSIC LOUNGE • FEATURE COMING SOON 🎵</span>
+            </div>
+
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight leading-snug">
+              Listen Together in Synced High-Fidelity Audio
+            </h2>
+
+            <p className="text-sm text-gray-300 leading-relaxed max-w-xl font-normal">
+              Build live collaborative music queues, stream Soundcloud & Spotify tracks simultaneously, and vibe with friends in low-latency spatial audio lounges.
+            </p>
+
+            {/* Music Equalizer Visualizer Animation */}
+            <div className="flex items-center gap-1.5 pt-1">
+              <span className="text-xs font-bold text-gray-400 uppercase tracking-wider mr-2">Live Equalizer:</span>
+              <div className="flex items-end gap-1 h-6">
+                <span className="w-1 bg-rose-500 rounded-full animate-bounce h-4" style={{ animationDuration: '0.8s' }} />
+                <span className="w-1 bg-amber-400 rounded-full animate-bounce h-6" style={{ animationDuration: '0.5s' }} />
+                <span className="w-1 bg-emerald-400 rounded-full animate-bounce h-3" style={{ animationDuration: '0.9s' }} />
+                <span className="w-1 bg-cyan-400 rounded-full animate-bounce h-5" style={{ animationDuration: '0.6s' }} />
+                <span className="w-1 bg-rose-400 rounded-full animate-bounce h-6" style={{ animationDuration: '0.7s' }} />
+              </div>
+              <span className="text-xs font-mono text-rose-300 ml-3">320kbps Lossless Audio Stream</span>
+            </div>
+
+            {/* Music Genre Chips */}
+            <div className="flex flex-wrap items-center gap-2 pt-2">
+              {["Lofi Chill ☕", "Synthwave 🌆", "Pop & Hip-Hop 🎧", "Indie Acoustic 🎸", "EDM Beats ⚡"].map((tag) => (
+                <span key={tag} className="px-2.5 py-1 rounded-xl bg-neutral-800/80 border border-neutral-700/60 text-neutral-200 text-xs font-semibold">
+                  {tag}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          {/* Waitlist Call To Action Form */}
+          <div className="lg:col-span-5 bg-neutral-950/80 border border-neutral-800 p-5 rounded-2xl space-y-3 shadow-xl">
+            <h3 className="font-extrabold text-sm text-white flex items-center gap-2">
+              <Bell className="w-4 h-4 text-amber-400" />
+              <span>Be the First to Access Music Lounges</span>
+            </h3>
+            <p className="text-xs text-gray-300">
+              Join 1,200+ music lovers on the early access waitlist. We'll send you an invite code when beta drops!
+            </p>
+
+            {subscribed ? (
+              <div className="p-3 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-bold flex items-center gap-2 animate-fade-in">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>You're on the waitlist! We'll notify you soon. 🎉</span>
+              </div>
+            ) : (
+              <form onSubmit={(e) => {
+                e.preventDefault();
+                if (notifyEmail.trim()) {
+                  setSubscribed(true);
+                  setNotifyEmail("");
+                }
+              }} className="space-y-2">
+                <Input
+                  type="email"
+                  placeholder="Enter your email address..."
+                  value={notifyEmail}
+                  onChange={(e) => setNotifyEmail(e.target.value)}
+                  className="h-10 text-xs rounded-xl bg-neutral-900 border-neutral-700 text-white placeholder:text-gray-500"
+                />
+                <Button type="submit" disabled={!notifyEmail.trim()} className="w-full h-10 text-xs font-bold rounded-xl bg-[hsl(var(--accent))] text-white hover:bg-[hsl(var(--accent-hover))] cursor-pointer gap-2 shadow-lg disabled:opacity-50">
+                  <span>Get Early Access Invite 🎵</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </Button>
+              </form>
+            )}
+          </div>
+
+        </div>
+      </div>
+
+      {/* HUMAN-CRAFTED PROFESSIONAL LEVEL FOOTER */}
+      <footer className="mt-20 border-t border-[hsl(var(--border))] pt-12 pb-8 text-left space-y-10">
+        
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-8 lg:gap-12">
+          
+          {/* Brand Info & Live Status */}
+          <div className="md:col-span-5 space-y-4">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-[hsl(var(--accent))] text-white flex items-center justify-center font-extrabold text-sm shadow-md">
+                R
+              </div>
+              <span className="font-extrabold tracking-tight text-lg text-[hsl(var(--text))]">RATRI</span>
+            </div>
+
+            <p className="text-xs text-[hsl(var(--text-secondary))] leading-relaxed max-w-sm">
+              The real-time social room platform to watch videos, listen to music, play games, and talk with friends. Low-latency, privacy-first, zero downloads.
+            </p>
+
+            {/* Live Operational Status */}
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/25 text-emerald-600 dark:text-emerald-400 text-xs font-bold tracking-wide">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span>All Systems Operational • 99.9% Uptime</span>
+            </div>
+          </div>
+
+          {/* Column 2: Room Modes */}
+          <div className="md:col-span-2 space-y-3">
+            <h4 className="text-xs font-extrabold uppercase tracking-wider text-[hsl(var(--text))]">Room Modes</h4>
+            <ul className="space-y-2 text-xs text-[hsl(var(--text-secondary))] font-medium">
+              <li className="hover:text-[hsl(var(--accent))] transition-colors cursor-pointer flex items-center gap-1.5">
+                <span>🍿 Watch Party</span>
+              </li>
+              <li className="hover:text-[hsl(var(--accent))] transition-colors cursor-pointer flex items-center gap-1.5">
+                <span>🎙️ Voice Lounge</span>
+              </li>
+              <li className="hover:text-[hsl(var(--accent))] transition-colors cursor-pointer flex items-center gap-1.5">
+                <span>⚡ Chill Chat</span>
+              </li>
+              <li className="hover:text-[hsl(var(--accent))] transition-colors cursor-pointer flex items-center gap-1.5">
+                <span>🎮 Arcade Arena</span>
+              </li>
+              <li className="hover:text-[hsl(var(--accent))] transition-colors cursor-pointer flex items-center gap-1.5">
+                <span>🎵 Song Lounge</span>
+                <span className="text-[9px] px-1.5 py-0.2 rounded bg-rose-500/15 text-rose-400 font-bold border border-rose-500/25 uppercase">Soon</span>
+              </li>
+            </ul>
+          </div>
+
+          {/* Column 3: Features */}
+          <div className="md:col-span-2 space-y-3">
+            <h4 className="text-xs font-extrabold uppercase tracking-wider text-[hsl(var(--text))]">Features</h4>
+            <ul className="space-y-2 text-xs text-[hsl(var(--text-secondary))] font-medium">
+              <li className="hover:text-[hsl(var(--accent))] transition-colors cursor-pointer">Frame Sync Engine</li>
+              <li className="hover:text-[hsl(var(--accent))] transition-colors cursor-pointer">WebRTC Mesh VC</li>
+              <li className="hover:text-[hsl(var(--accent))] transition-colors cursor-pointer">Screen Sharing</li>
+              <li className="hover:text-[hsl(var(--accent))] transition-colors cursor-pointer">Random Matchmaking</li>
+              <li className="hover:text-[hsl(var(--accent))] transition-colors cursor-pointer">Instant Guest Join</li>
+            </ul>
+          </div>
+
+          {/* Column 4: Resources & Social */}
+          <div className="md:col-span-3 space-y-3">
+            <h4 className="text-xs font-extrabold uppercase tracking-wider text-[hsl(var(--text))]">Connect & Support</h4>
+            <p className="text-xs text-[hsl(var(--text-secondary))] leading-relaxed">
+              Open-source real-time application architecture built for high performance and community interaction.
+            </p>
+            <div className="flex items-center gap-2 pt-1">
+              <a
+                href="https://github.com/akashcodev001"
+                target="_blank"
+                rel="noreferrer"
+                className="w-8 h-8 rounded-xl bg-[hsl(var(--surface-elevated))] border border-[hsl(var(--border))] flex items-center justify-center text-[hsl(var(--text))] hover:bg-[hsl(var(--accent))] hover:text-white transition-all cursor-pointer shadow-xs"
+                title="GitHub"
+              >
+                <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+              </a>
+              <a
+                href="https://twitter.com"
+                target="_blank"
+                rel="noreferrer"
+                className="w-8 h-8 rounded-xl bg-[hsl(var(--surface-elevated))] border border-[hsl(var(--border))] flex items-center justify-center text-[hsl(var(--text))] hover:bg-[hsl(var(--accent))] hover:text-white transition-all cursor-pointer shadow-xs"
+                title="Twitter / X"
+              >
+                <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+              </a>
+              <a
+                href="https://ratri.app"
+                target="_blank"
+                rel="noreferrer"
+                className="w-8 h-8 rounded-xl bg-[hsl(var(--surface-elevated))] border border-[hsl(var(--border))] flex items-center justify-center text-[hsl(var(--text))] hover:bg-[hsl(var(--accent))] hover:text-white transition-all cursor-pointer shadow-xs"
+                title="Website"
+              >
+                <Globe className="w-4 h-4" />
+              </a>
+            </div>
+          </div>
+
+        </div>
+
+        {/* Bottom Bar with Made with Heart by ak */}
+        <div className="pt-6 border-t border-[hsl(var(--border))] flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-[hsl(var(--text-secondary))] font-medium">
+          <div>
+            © {new Date().getFullYear()} RATRI Real-Time Social Platform. All rights reserved.
+          </div>
+
+          <div className="flex items-center gap-1 text-xs font-semibold text-[hsl(var(--text))] bg-[hsl(var(--surface-elevated))] px-3 py-1.5 rounded-full border border-[hsl(var(--border))] shadow-xs">
+            <span>Made with</span>
+            <Heart className="w-3.5 h-3.5 text-rose-500 fill-rose-500 animate-bounce inline cursor-pointer mx-0.5" style={{ animationDuration: '1.4s' }} />
+            <span>by <strong className="text-[hsl(var(--accent))] font-extrabold tracking-wide">ak</strong></span>
+          </div>
+
+          <div className="flex items-center gap-4 text-xs text-[hsl(var(--text-muted))]">
+            <span className="hover:text-[hsl(var(--text))] transition-colors cursor-pointer">Privacy Policy</span>
+            <span>•</span>
+            <span className="hover:text-[hsl(var(--text))] transition-colors cursor-pointer">Terms of Service</span>
+            <span>•</span>
+            <span className="hover:text-[hsl(var(--text))] transition-colors cursor-pointer">Security</span>
+          </div>
+        </div>
+
+      </footer>
+
+      {/* Chill Chat Random Match Modal */}
+      <ChillMatchModal
+        isOpen={showChillModal}
+        onClose={() => setShowChillModal(false)}
+        onStartMatch={handleStartChillMatch}
+      />
 
     </div>
   );
