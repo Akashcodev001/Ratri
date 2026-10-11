@@ -7,40 +7,60 @@ import helmet from 'helmet';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   
+  // Dynamic Origin Validator (Environment-driven, 12-factor standard)
+  const isOriginAllowed = (origin: string | undefined): boolean => {
+    if (!origin) return true; // Allow same-origin, server-to-server, curl, health checks
+    const originLower = origin.toLowerCase();
+
+    // 1. Local development origins
+    if (
+      originLower.startsWith('http://localhost:') ||
+      originLower.startsWith('http://127.0.0.1:') ||
+      originLower.startsWith('https://localhost:') ||
+      originLower.startsWith('https://127.0.0.1:')
+    ) {
+      return true;
+    }
+
+    // 2. User-defined CLIENT_ORIGIN environment variable (supports exact domains and wildcards like *.vercel.app)
+    if (process.env.CLIENT_ORIGIN) {
+      const envOrigins = process.env.CLIENT_ORIGIN.split(',').map(o => o.trim().toLowerCase());
+      for (const pattern of envOrigins) {
+        if (pattern === originLower) return true;
+        if (pattern.startsWith('*.')) {
+          const suffix = pattern.slice(1); // e.g. .vercel.app
+          if (originLower.endsWith(suffix)) return true;
+        }
+      }
+    }
+
+    return false;
+  };
+
   // Security Headers & Content Security Policy
   app.use(
     helmet({
       contentSecurityPolicy: {
         directives: {
           defaultSrc: ["'self'"],
-          scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
-          styleSrc: ["'self'", "'unsafe-inline'"],
+          scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", 'https://www.youtube.com', 'https://s.ytimg.com'],
+          styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+          fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
           imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
           mediaSrc: ["'self'", 'blob:', 'https:'],
-          connectSrc: [
-            "'self'",
-            'ws:',
-            'wss:',
-            'http:',
-            'https:',
-            process.env.CLIENT_ORIGIN || 'http://localhost:5173',
-          ],
+          connectSrc: ["'self'", 'ws:', 'wss:', 'http:', 'https:'],
           frameSrc: ["'self'", 'https://www.youtube.com', 'https://youtube.com'],
           objectSrc: ["'none'"],
         },
       },
       crossOriginResourcePolicy: { policy: 'cross-origin' },
+      crossOriginEmbedderPolicy: false,
     })
   );
 
-  // Restricted CORS configuration
-  const allowedOrigins = process.env.CLIENT_ORIGIN
-    ? process.env.CLIENT_ORIGIN.split(',').map(o => o.trim())
-    : ['http://localhost:5173', 'http://127.0.0.1:5173'];
-
   app.enableCors({
     origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
-      if (!origin || allowedOrigins.includes(origin)) {
+      if (isOriginAllowed(origin)) {
         callback(null, true);
       } else {
         callback(null, false);

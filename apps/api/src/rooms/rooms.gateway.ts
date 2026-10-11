@@ -12,6 +12,7 @@ import { Logger } from '@nestjs/common';
 import { RoomMode, Participant, GameSession, GameId } from '@ratri/types';
 import { GameEngine } from './game-engine';
 import { AuthService } from '../auth/auth.service';
+import { RoomsService } from './rooms.service';
 
 interface ServerRoomState {
   roomCode: string;
@@ -28,17 +29,44 @@ interface ServerRoomState {
   gameTimerInterval?: any;
 }
 
-const getCorsOrigin = () => {
-  const envOrigin = process.env.CLIENT_ORIGIN;
-  if (envOrigin) {
-    return envOrigin.split(',').map(o => o.trim());
+const isWebSocketOriginAllowed = (origin: string | undefined): boolean => {
+  if (!origin) return true;
+  const originLower = origin.toLowerCase();
+
+  // 1. Local development
+  if (
+    originLower.startsWith('http://localhost:') ||
+    originLower.startsWith('http://127.0.0.1:') ||
+    originLower.startsWith('https://localhost:') ||
+    originLower.startsWith('https://127.0.0.1:')
+  ) {
+    return true;
   }
-  return ['http://localhost:5173', 'http://127.0.0.1:5173'];
+
+  // 2. Custom environment variable (exact domains or wildcards like *.vercel.app)
+  if (process.env.CLIENT_ORIGIN) {
+    const envOrigins = process.env.CLIENT_ORIGIN.split(',').map(o => o.trim().toLowerCase());
+    for (const pattern of envOrigins) {
+      if (pattern === originLower) return true;
+      if (pattern.startsWith('*.')) {
+        const suffix = pattern.slice(1);
+        if (originLower.endsWith(suffix)) return true;
+      }
+    }
+  }
+
+  return false;
 };
 
 @WebSocketGateway({
   cors: {
-    origin: getCorsOrigin(),
+    origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+      if (isWebSocketOriginAllowed(origin)) {
+        callback(null, true);
+      } else {
+        callback(null, false);
+      }
+    },
     credentials: true,
   },
   transports: ['polling', 'websocket'],
@@ -53,8 +81,24 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private roomParticipants = new Map<string, Map<string, Participant>>();
   private roomStates = new Map<string, ServerRoomState>();
   private chillQueue: { socketId: string; displayName: string; topic: string }[] = [];
+  private emptyRoomTimers = new Map<string, NodeJS.Timeout>();
+  private roomHostMemberIds = new Map<string, string>(); // roomCode -> hostMemberId
+  private clientMemberIds = new Map<string, string>(); // socketId -> memberId
+  private roomMemberHistory = new Map<string, Map<string, { name: string; isHost: boolean }>>(); // roomCode -> memberId -> { name, isHost }
 
-  constructor(private readonly authService: AuthService) {}
+  private generateGuestName(participantsMap: Map<string, Participant>): string {
+    const existingNames = new Set(Array.from(participantsMap.values()).map(p => p.name));
+    let num = 2;
+    while (existingNames.has(`Guest ${num}`)) {
+      num++;
+    }
+    return `Guest ${num}`;
+  }
+
+  constructor(
+    private readonly authService: AuthService,
+    private readonly roomsService: RoomsService,
+  ) {}
 
   async handleConnection(client: Socket) {
     const rawToken = client.handshake.auth?.token || client.handshake.headers?.authorization;
@@ -79,6 +123,7 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     if (typeof val !== 'string') return '';
     return val
       .replace(/<[^>]*>/g, '') // Strip HTML tags
+      .replace(/[\u0000-\u001F\u007F-\u009F]/g, '') // Strip control characters
       .trim()
       .slice(0, maxLen);
   }
@@ -141,14 +186,44 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   @SubscribeMessage('join_room')
-  handleJoinRoom(
+  async handleJoinRoom(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: { roomCode?: string; username?: string; name?: string }
+    @MessageBody() data: { roomCode?: string; username?: string; name?: string; memberId?: string }
   ) {
     const rawCode = data?.roomCode || '';
     const code = this.sanitizeString(rawCode, 20).toUpperCase();
     if (!code) {
       return { success: false, error: 'INVALID_ROOM_CODE' };
+    }
+
+    const rawMemberId = data?.memberId || '';
+    const memberId = this.sanitizeString(rawMemberId, 64) || client.id;
+    this.clientMemberIds.set(client.id, memberId);
+
+    let validatedRoom: any = null;
+    const isChill = code.startsWith('CHILL');
+    if (!isChill) {
+      try {
+        validatedRoom = await this.roomsService.validateAndJoinRoom(code);
+      } catch (err: any) {
+        this.logger.warn(`Join room rejected for ${code}: ${err?.message}`);
+        client.emit('room_error', {
+          code: 'ROOM_EXPIRED_OR_NOT_FOUND',
+          message: 'Room expired or does not exist.',
+        });
+        return {
+          success: false,
+          error: 'ROOM_EXPIRED_OR_NOT_FOUND',
+          message: 'Room expired or does not exist.',
+        };
+      }
+    }
+
+    // Cancel active empty grace timer on rejoin
+    if (this.emptyRoomTimers.has(code)) {
+      clearTimeout(this.emptyRoomTimers.get(code)!);
+      this.emptyRoomTimers.delete(code);
+      this.logger.log(`Cancelled empty grace period for room ${code} on participant rejoin`);
     }
 
     const rawName = data?.name || data?.username || '';
@@ -161,10 +236,35 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
 
     const participantsMap = this.roomParticipants.get(code)!;
-    const isHost = participantsMap.size === 0;
-    const isChill = code.startsWith('CHILL');
 
-    const participantName = sanitizedName || (isHost ? 'Host' : `Guest ${participantsMap.size + 1}`);
+    // Check if room host is known from DB or memory
+    if (validatedRoom?.hostMemberId && !this.roomHostMemberIds.has(code)) {
+      this.roomHostMemberIds.set(code, validatedRoom.hostMemberId);
+    }
+
+    // If room has no host yet (first joiner), assign this member as host
+    if (!this.roomHostMemberIds.has(code)) {
+      this.roomHostMemberIds.set(code, memberId);
+      if (!isChill) {
+        this.roomsService.setRoomHost(code, memberId).catch(err => {
+          this.logger.warn(`Failed to persist room host: ${err?.message}`);
+        });
+      }
+    }
+
+    const isHost = (this.roomHostMemberIds.get(code) === memberId);
+
+    if (!this.roomMemberHistory.has(code)) {
+      this.roomMemberHistory.set(code, new Map());
+    }
+    const historyMap = this.roomMemberHistory.get(code)!;
+    const previousHistory = historyMap.get(memberId);
+
+    const participantName =
+      sanitizedName ||
+      (isHost ? 'Host' : (previousHistory?.name || this.generateGuestName(participantsMap)));
+
+    historyMap.set(memberId, { name: participantName, isHost });
 
     const participant: Participant = {
       id: client.id,
@@ -178,7 +278,7 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     participantsMap.set(client.id, participant);
 
-    this.logger.log(`User ${participant.name} joined room ${code}`);
+    this.logger.log(`User ${participant.name} (${client.id}, isHost: ${isHost}) joined room ${code}`);
 
     const participantsList = Array.from(participantsMap.values());
     this.server.to(code).emit('room_participants', participantsList);
@@ -680,6 +780,11 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.chillQueue = this.chillQueue.filter(q => q.socketId !== client.id);
   }
 
+  @SubscribeMessage('leave_room')
+  handleLeaveRoom(@ConnectedSocket() client: Socket) {
+    this.leaveAllRooms(client);
+  }
+
   private leaveAllRooms(client: Socket) {
     this.chillQueue = this.chillQueue.filter(q => q.socketId !== client.id);
     for (const [code, participantsMap] of this.roomParticipants.entries()) {
@@ -702,6 +807,36 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
           }
           this.roomParticipants.delete(code);
           this.roomStates.delete(code);
+
+          // Mark room empty in DB and start 5-minute grace period
+          if (!code.startsWith('CHILL')) {
+            const graceMs = this.roomsService.getEmptyGracePeriodMs();
+            this.roomsService.markRoomEmpty(code, graceMs).catch((err: any) => {
+              this.logger.error(`Failed to mark room ${code} empty: ${err?.message}`);
+            });
+
+            if (this.emptyRoomTimers.has(code)) {
+              clearTimeout(this.emptyRoomTimers.get(code)!);
+            }
+
+            const timer = setTimeout(async () => {
+              this.emptyRoomTimers.delete(code);
+              const currentParticipants = this.roomParticipants.get(code);
+              if (!currentParticipants || currentParticipants.size === 0) {
+                await this.roomsService.expireDueRooms().catch((err: any) => {
+                  this.logger.error(`Failed to expire due rooms after grace period: ${err?.message}`);
+                });
+                this.roomHostMemberIds.delete(code);
+                this.roomMemberHistory.delete(code);
+                this.logger.log(`Room ${code} expired after empty grace period`);
+              }
+            }, graceMs);
+
+            if (timer.unref) {
+              timer.unref();
+            }
+            this.emptyRoomTimers.set(code, timer);
+          }
         } else {
           this.broadcastRoomMode(code);
         }
