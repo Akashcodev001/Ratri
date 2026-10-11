@@ -27,12 +27,25 @@ export function ParticipantTile({
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   useEffect(() => {
-    if (videoRef.current && stream) {
-      if (videoRef.current.srcObject !== stream) {
+    if (!videoRef.current || !stream) return;
+    videoRef.current.srcObject = stream;
+    videoRef.current.play().catch(() => {});
+
+    const handleTrackChange = () => {
+      if (videoRef.current && stream) {
         videoRef.current.srcObject = stream;
+        videoRef.current.play().catch(() => {});
       }
-      videoRef.current.play().catch(() => {});
-    }
+    };
+
+    stream.addEventListener("addtrack", handleTrackChange);
+    stream.addEventListener("removetrack", handleTrackChange);
+    stream.getTracks().forEach(t => t.addEventListener("unmute", handleTrackChange));
+    return () => {
+      stream.removeEventListener("addtrack", handleTrackChange);
+      stream.removeEventListener("removetrack", handleTrackChange);
+      stream.getTracks().forEach(t => t.removeEventListener("unmute", handleTrackChange));
+    };
   }, [stream, videoOn]);
 
   const initials = name
@@ -53,7 +66,13 @@ export function ParticipantTile({
       {/* Active Video Stream */}
       {videoOn && stream ? (
         <video
-          ref={videoRef}
+          ref={(el) => {
+            if (el && stream && el.srcObject !== stream) {
+              el.srcObject = stream;
+              el.play().catch(() => {});
+            }
+            videoRef.current = el;
+          }}
           autoPlay
           playsInline
           muted={isLocal}

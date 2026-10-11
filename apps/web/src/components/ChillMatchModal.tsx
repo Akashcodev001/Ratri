@@ -9,6 +9,10 @@ const getSocketUrl = () => {
     return import.meta.env.VITE_SOCKET_URL;
   }
   if (typeof window !== 'undefined' && window.location) {
+    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    if (isLocal) {
+      return "http://localhost:3000";
+    }
     return window.location.origin;
   }
   return "http://localhost:3000";

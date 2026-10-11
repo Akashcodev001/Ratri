@@ -79,9 +79,29 @@ const getSocketUrl = () => {
     return import.meta.env.VITE_SOCKET_URL;
   }
   if (typeof window !== 'undefined' && window.location) {
+    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    if (isLocal) {
+      return "http://localhost:3000";
+    }
     return window.location.origin;
   }
   return "http://localhost:3000";
+};
+
+const getRoomMemberId = (code: string): string => {
+  if (typeof window === 'undefined') return '';
+  const storageKey = `ratri_member_${code.toUpperCase()}`;
+  let mId = sessionStorage.getItem(storageKey);
+  if (!mId) {
+    mId = 'm_' + Math.random().toString(36).substring(2, 11) + Date.now().toString(36);
+    sessionStorage.setItem(storageKey, mId);
+  }
+  return mId;
+};
+
+const getRoomSavedName = (code: string): string | null => {
+  if (typeof window === 'undefined') return null;
+  return sessionStorage.getItem(`ratri_name_${code.toUpperCase()}`);
 };
 
 function extractYouTubeId(url: string): string | null {
@@ -213,6 +233,7 @@ export function Room() {
   const [speakingSocketIds, setSpeakingSocketIds] = useState<Set<string>>(new Set());
   const [showGameSelector, setShowGameSelector] = useState(false);
   const [showChillModal, setShowChillModal] = useState(false);
+  const [roomExpired, setRoomExpired] = useState(false);
 
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -230,11 +251,20 @@ export function Room() {
   const isRemoteActionRef = useRef(false);
   const showChatRef = useRef(showChat);
 
+  const chatContainerRef = useRef<HTMLDivElement | null>(null);
+  const chatEndRef = useRef<HTMLDivElement | null>(null);
+  const shouldAutoScrollRef = useRef(true);
+
+  const chillChatContainerRef = useRef<HTMLDivElement | null>(null);
+  const chillChatEndRef = useRef<HTMLDivElement | null>(null);
+  const shouldChillAutoScrollRef = useRef(true);
+
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
   const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const makingOfferMapRef = useRef<Map<string, boolean>>(new Map());
   const ignoreOfferMapRef = useRef<Map<string, boolean>>(new Map());
+  const iceCandidatesQueueRef = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
 
   useEffect(() => {
     showChatRef.current = showChat;
@@ -242,6 +272,28 @@ export function Room() {
       setUnreadCount(0);
     }
   }, [showChat]);
+
+  // Intelligent chat auto-scrolling
+  useEffect(() => {
+    if (shouldAutoScrollRef.current && chatEndRef.current) {
+      chatEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+    if (shouldChillAutoScrollRef.current && chillChatEndRef.current) {
+      chillChatEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages]);
+
+  const handleChatScroll = () => {
+    if (!chatContainerRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = chatContainerRef.current;
+    shouldAutoScrollRef.current = scrollHeight - scrollTop - clientHeight < 60;
+  };
+
+  const handleChillChatScroll = () => {
+    if (!chillChatContainerRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = chillChatContainerRef.current;
+    shouldChillAutoScrollRef.current = scrollHeight - scrollTop - clientHeight < 60;
+  };
 
   // Active local speaker detection
   useEffect(() => {
@@ -448,12 +500,28 @@ export function Room() {
     });
 
     const emitJoinRoom = () => {
-      socket.emit("join_room", { roomCode: code, name: urlName || undefined }, (res: any) => {
+      const memberId = getRoomMemberId(code);
+      const savedName = getRoomSavedName(code) || urlName || undefined;
+      socket.emit("join_room", { roomCode: code, name: savedName, memberId }, (res: any) => {
+        if (res?.success === false && res?.error === 'ROOM_EXPIRED_OR_NOT_FOUND') {
+          setRoomExpired(true);
+          return;
+        }
         if (res?.participants && Array.isArray(res.participants)) {
           setParticipants(res.participants);
+          const me = res.participants.find((p: Participant) => p.socketId === socket.id);
+          if (me?.name) {
+            sessionStorage.setItem(`ratri_name_${code.toUpperCase()}`, me.name);
+          }
         }
       });
     };
+
+    socket.on("room_error", (errData: { code: string; message: string }) => {
+      if (errData?.code === 'ROOM_EXPIRED_OR_NOT_FOUND') {
+        setRoomExpired(true);
+      }
+    });
 
     if (socket.connected) {
       emitJoinRoom();
@@ -502,6 +570,13 @@ export function Room() {
 
     socket.on("room_participants", async (updatedParticipants: Participant[]) => {
       setParticipants(updatedParticipants);
+      const me = updatedParticipants.find(p => p.socketId === socket.id);
+      if (me?.name) {
+        sessionStorage.setItem(`ratri_name_${code.toUpperCase()}`, me.name);
+      }
+      if (me?.isHost) {
+        sessionStorage.setItem(`ratri_is_host_${code.toUpperCase()}`, 'true');
+      }
       const hasAnyRemoteVideo = updatedParticipants.some(p => p.socketId !== socket.id && p.videoOn);
       setRemoteVideoActive(hasAnyRemoteVideo);
 
@@ -556,6 +631,7 @@ export function Room() {
       if (targetId) {
         makingOfferMapRef.current.delete(targetId);
         ignoreOfferMapRef.current.delete(targetId);
+        iceCandidatesQueueRef.current.delete(targetId);
         setRemoteStreamsMap(prev => {
           const next = new Map(prev);
           next.delete(targetId);
@@ -645,6 +721,19 @@ export function Room() {
       }, 400);
     });
 
+    const drainIceCandidates = async (targetSocketId: string, peer: RTCPeerConnection) => {
+      const queue = iceCandidatesQueueRef.current.get(targetSocketId);
+      if (!queue || queue.length === 0) return;
+      iceCandidatesQueueRef.current.delete(targetSocketId);
+      for (const cand of queue) {
+        try {
+          await peer.addIceCandidate(new RTCIceCandidate(cand));
+        } catch (e) {
+          console.warn("Handled queued ICE candidate addition error", e);
+        }
+      }
+    };
+
     socket.on("webrtc_offer", async ({ senderSocketId, offer }: { senderSocketId: string; offer: any }) => {
       try {
         const peer = createPeerConnection(senderSocketId);
@@ -663,14 +752,25 @@ export function Room() {
         }
 
         await peer.setRemoteDescription(new RTCSessionDescription(offer));
+        await drainIceCandidates(senderSocketId, peer);
 
         if (mediaStreamRef.current) {
-          const senders = peer.getSenders();
-          mediaStreamRef.current.getTracks().forEach(track => {
-            if (!senders.some(s => s.track?.kind === track.kind)) {
-              peer.addTrack(track, mediaStreamRef.current!);
+          for (const track of mediaStreamRef.current.getTracks()) {
+            const transceivers = peer.getTransceivers();
+            const matchingTransceiver = transceivers.find(t => t.sender && (t.sender.track?.kind === track.kind || (!t.sender.track && t.receiver?.track?.kind === track.kind)));
+            if (matchingTransceiver) {
+              try { matchingTransceiver.direction = "sendrecv"; } catch (e) {}
+              await matchingTransceiver.sender.replaceTrack(track).catch(() => {});
+            } else {
+              const senders = peer.getSenders();
+              const matchingSender = senders.find(s => s.track?.kind === track.kind || !s.track);
+              if (matchingSender) {
+                await matchingSender.replaceTrack(track).catch(() => {});
+              } else {
+                try { peer.addTrack(track, mediaStreamRef.current!); } catch (e) {}
+              }
             }
-          });
+          }
         }
 
         if (peer.signalingState === "have-remote-offer") {
@@ -690,6 +790,7 @@ export function Room() {
         const peer = peerConnectionsRef.current.get(senderSocketId);
         if (peer && peer.signalingState === "have-local-offer") {
           await peer.setRemoteDescription(new RTCSessionDescription(answer));
+          await drainIceCandidates(senderSocketId, peer);
         }
       } catch (err) {
         console.warn("Handled WebRTC answer state transition", err);
@@ -697,20 +798,22 @@ export function Room() {
     });
 
     socket.on("webrtc_ice_candidate", async ({ senderSocketId, candidate }: { senderSocketId: string; candidate: any }) => {
+      if (!candidate) return;
       try {
         const peer = peerConnectionsRef.current.get(senderSocketId);
-        const ignoreOffer = ignoreOfferMapRef.current.get(senderSocketId);
-        if (peer && candidate) {
-          try {
-            await peer.addIceCandidate(new RTCIceCandidate(candidate));
-          } catch (err) {
-            if (!ignoreOffer) {
-              console.warn("Handled ICE candidate addition transition", err);
-            }
-          }
+        if (!peer || !peer.remoteDescription || !peer.remoteDescription.type) {
+          const queue = iceCandidatesQueueRef.current.get(senderSocketId) || [];
+          queue.push(candidate);
+          iceCandidatesQueueRef.current.set(senderSocketId, queue);
+          return;
         }
+
+        await peer.addIceCandidate(new RTCIceCandidate(candidate));
       } catch (err) {
-        console.warn("Handled ICE candidate event transition", err);
+        const ignoreOffer = ignoreOfferMapRef.current.get(senderSocketId);
+        if (!ignoreOffer) {
+          console.warn("Handled ICE candidate addition transition", err);
+        }
       }
     });
 
@@ -762,6 +865,23 @@ export function Room() {
     const peer = new RTCPeerConnection(ICE_SERVERS);
     peerConnectionsRef.current.set(targetSocketId, peer);
 
+    peer.oniceconnectionstatechange = () => {
+      if (peer.iceConnectionState === "failed") {
+        console.warn(`ICE connection to ${targetSocketId} failed. Triggering ICE restart...`);
+        if (socketRef.current?.id && socketRef.current.id < targetSocketId) {
+          safeCreateOffer(targetSocketId, { iceRestart: true });
+        }
+      }
+    };
+
+    // Add bidirectional transceivers upfront for stable audio & video media sections
+    try {
+      peer.addTransceiver("audio", { direction: "sendrecv" });
+      peer.addTransceiver("video", { direction: "sendrecv" });
+    } catch (e) {
+      console.warn("Transceiver initialization fallback", e);
+    }
+
     peer.onicecandidate = (event) => {
       if (event.candidate && socketRef.current) {
         socketRef.current.emit("webrtc_ice_candidate", {
@@ -772,32 +892,50 @@ export function Room() {
     };
 
     peer.ontrack = (event) => {
-      if (event.streams && event.streams[0]) {
-        const stream = event.streams[0];
+      const incomingTrack = event.track;
+
+      const updateRemoteStream = () => {
         setRemoteStreamsMap(prev => {
           const next = new Map(prev);
-          next.set(targetSocketId, stream);
+          const existing = next.get(targetSocketId);
+          if (existing) {
+            const tracks = existing.getTracks().filter(t => t.id !== incomingTrack.id && t.kind !== incomingTrack.kind);
+            tracks.push(incomingTrack);
+            next.set(targetSocketId, new MediaStream(tracks));
+          } else if (event.streams && event.streams[0]) {
+            next.set(targetSocketId, event.streams[0]);
+          } else {
+            next.set(targetSocketId, new MediaStream([incomingTrack]));
+          }
           return next;
         });
-        if (event.track && event.track.kind === "video") {
-          setRemoteVideoActive(true);
-        }
-      } else if (event.track) {
-        const stream = new MediaStream([event.track]);
-        setRemoteStreamsMap(prev => {
-          const next = new Map(prev);
-          next.set(targetSocketId, stream);
-          return next;
-        });
-        if (event.track.kind === "video") {
-          setRemoteVideoActive(true);
-        }
+      };
+
+      updateRemoteStream();
+      incomingTrack.addEventListener('unmute', updateRemoteStream);
+      incomingTrack.addEventListener('ended', updateRemoteStream);
+
+      if (incomingTrack && incomingTrack.kind === "video") {
+        setRemoteVideoActive(true);
       }
     };
 
     if (mediaStreamRef.current) {
       mediaStreamRef.current.getTracks().forEach(track => {
-        peer.addTrack(track, mediaStreamRef.current!);
+        const transceivers = peer.getTransceivers();
+        const matchingTransceiver = transceivers.find(t => t.sender && (t.sender.track?.kind === track.kind || (!t.sender.track && t.receiver?.track?.kind === track.kind)));
+        if (matchingTransceiver) {
+          try { matchingTransceiver.direction = "sendrecv"; } catch (e) {}
+          matchingTransceiver.sender.replaceTrack(track).catch(() => {});
+        } else {
+          const senders = peer.getSenders();
+          const matchingSender = senders.find(s => s.track?.kind === track.kind || !s.track);
+          if (matchingSender) {
+            matchingSender.replaceTrack(track).catch(() => {});
+          } else {
+            try { peer.addTrack(track, mediaStreamRef.current!); } catch (e) {}
+          }
+        }
       });
     }
 
@@ -809,6 +947,7 @@ export function Room() {
     peerConnectionsRef.current.clear();
     makingOfferMapRef.current.clear();
     ignoreOfferMapRef.current.clear();
+    iceCandidatesQueueRef.current.clear();
   };
 
   // Helper to Stop Active Shared Media & Return to VC Mode
@@ -926,12 +1065,20 @@ export function Room() {
         mediaStreamRef.current = updatedStream;
         setLocalStream(updatedStream);
 
-        for (const [, peer] of peerConnectionsRef.current.entries()) {
-          const senders = peer.getSenders();
-          const videoSender = senders.find(s => s.track?.kind === "video");
-          if (videoSender) {
-            await videoSender.replaceTrack(null);
+        for (const [targetSocketId, peer] of peerConnectionsRef.current.entries()) {
+          const transceivers = peer.getTransceivers();
+          const videoTransceiver = transceivers.find(t => t.sender && (t.sender.track?.kind === "video" || t.receiver?.track?.kind === "video"));
+          if (videoTransceiver) {
+            try { videoTransceiver.direction = "recvonly"; } catch (e) {}
+            await videoTransceiver.sender.replaceTrack(null);
+          } else {
+            const senders = peer.getSenders();
+            const videoSender = senders.find(s => s.track?.kind === "video");
+            if (videoSender) {
+              await videoSender.replaceTrack(null);
+            }
           }
+          await safeCreateOffer(targetSocketId);
         }
       } else {
         const vStream = await navigator.mediaDevices.getUserMedia({ video: true });
@@ -948,14 +1095,21 @@ export function Room() {
         setLocalStream(updatedStream);
 
         for (const [targetSocketId, peer] of peerConnectionsRef.current.entries()) {
-          const senders = peer.getSenders();
-          const videoSender = senders.find(s => s.track?.kind === "video");
-          if (videoSender && newVideoTrack) {
-            await videoSender.replaceTrack(newVideoTrack);
-          } else if (newVideoTrack) {
-            peer.addTrack(newVideoTrack, updatedStream);
-            safeCreateOffer(targetSocketId);
+          const transceivers = peer.getTransceivers();
+          const videoTransceiver = transceivers.find(t => t.sender && (t.sender.track?.kind === "video" || t.receiver?.track?.kind === "video"));
+          if (videoTransceiver && newVideoTrack) {
+            try { videoTransceiver.direction = "sendrecv"; } catch (e) {}
+            await videoTransceiver.sender.replaceTrack(newVideoTrack);
+          } else {
+            const senders = peer.getSenders();
+            const videoSender = senders.find(s => s.track?.kind === "video" || !s.track);
+            if (videoSender && newVideoTrack) {
+              await videoSender.replaceTrack(newVideoTrack);
+            } else if (newVideoTrack) {
+              peer.addTrack(newVideoTrack, updatedStream);
+            }
           }
+          await safeCreateOffer(targetSocketId);
         }
       }
 
@@ -986,13 +1140,20 @@ export function Room() {
         audioTrack.enabled = nextMic;
       }
 
-      for (const [, peer] of peerConnectionsRef.current.entries()) {
-        const senders = peer.getSenders();
-        const audioSender = senders.find(s => s.track?.kind === "audio");
-
-        if (audioSender && audioTrack) {
-          await audioSender.replaceTrack(nextMic ? audioTrack : null);
+      for (const [targetSocketId, peer] of peerConnectionsRef.current.entries()) {
+        const transceivers = peer.getTransceivers();
+        const audioTransceiver = transceivers.find(t => t.sender && (t.sender.track?.kind === "audio" || t.receiver?.track?.kind === "audio"));
+        if (audioTransceiver && audioTrack) {
+          try { audioTransceiver.direction = nextMic ? "sendrecv" : "recvonly"; } catch (e) {}
+          await audioTransceiver.sender.replaceTrack(nextMic ? audioTrack : null);
+        } else {
+          const senders = peer.getSenders();
+          const audioSender = senders.find(s => s.track?.kind === "audio");
+          if (audioSender && audioTrack) {
+            await audioSender.replaceTrack(nextMic ? audioTrack : null);
+          }
         }
+        await safeCreateOffer(targetSocketId);
       }
 
       showToast(nextMic ? "Microphone UNMUTED" : "Microphone MUTED");
@@ -1127,8 +1288,40 @@ export function Room() {
   const currentSocketId = socketRef.current?.id || '';
   const isCurrentHost = participants.some(p => p.socketId === currentSocketId && p.isHost);
 
+  if (roomExpired) {
+    return (
+      <div className="h-[calc(100dvh-3.5rem)] min-h-[calc(100vh-3.5rem)] flex flex-col items-center justify-center p-6 bg-[hsl(var(--bg))] text-center">
+        <SeoHead
+          title="Room Expired — Ratri"
+          description="This room session has ended."
+          canonicalPath="/r/expired"
+          noindex={true}
+        />
+        <div className="max-w-md w-full p-8 rounded-2xl bg-[hsl(var(--surface))] border border-[hsl(var(--border))] shadow-2xl space-y-5">
+          <div className="w-16 h-16 rounded-full bg-rose-500/10 text-rose-500 flex items-center justify-center text-3xl mx-auto border border-rose-500/20">
+            ⏳
+          </div>
+          <div className="space-y-2">
+            <h1 className="text-2xl font-black text-[hsl(var(--text))]">Room expired or does not exist.</h1>
+            <p className="text-sm text-[hsl(var(--text-secondary))] leading-relaxed">
+              This room session has expired after being empty for 5 minutes or was not found.
+            </p>
+          </div>
+          <div className="pt-2 flex flex-col sm:flex-row gap-3 justify-center">
+            <Button
+              onClick={() => navigate('/')}
+              className="w-full sm:w-auto h-11 px-6 rounded-xl bg-[hsl(var(--accent))] text-white hover:bg-[hsl(var(--accent-hover))] font-bold cursor-pointer"
+            >
+              Back to Home
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="h-[calc(100vh-3.5rem)] flex flex-col bg-[hsl(var(--bg))] text-[hsl(var(--text))] overflow-hidden transition-colors duration-200 relative">
+    <div className="h-[calc(100dvh-3.5rem)] min-h-[calc(100vh-3.5rem)] flex flex-col bg-[hsl(var(--bg))] text-[hsl(var(--text))] overflow-hidden transition-colors duration-200 relative">
       <SeoHead
         title={`Ratri Room ${roomCode}`}
         description="Private Ratri social watch session."
@@ -1163,7 +1356,7 @@ export function Room() {
       )}
 
       {/* Sub-header Bar with Mode Indicator & Stop Media Button */}
-      <div className="h-12 border-b border-[hsl(var(--border))] bg-[hsl(var(--surface))] px-4 sm:px-6 flex items-center justify-between shrink-0">
+      <div className="h-12 border-b border-[hsl(var(--border))] bg-[hsl(var(--surface))] px-3 sm:px-6 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2 px-3 py-0.5 rounded-full bg-[hsl(var(--surface-elevated))] border border-[hsl(var(--border))]">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
@@ -1274,7 +1467,7 @@ export function Room() {
       <div className="flex-1 flex overflow-hidden relative">
         
         {/* Stage Container */}
-        <main className="flex-1 flex flex-col p-4 overflow-y-auto no-scrollbar justify-between bg-[hsl(var(--surface-sunken))] relative">
+        <main className="flex-1 min-h-0 flex flex-col p-2 sm:p-4 overflow-y-auto no-scrollbar justify-between bg-[hsl(var(--surface-sunken))] relative">
           
           {/* Video Link Control Input & Quick Presets (Hidden in CHILL Chat Mode) */}
           {!isChillMode && (
@@ -1373,7 +1566,11 @@ export function Room() {
                 </div>
 
                 {/* Center Live Message Feed */}
-                <div className="flex-1 overflow-y-auto space-y-3 p-4 bg-[hsl(var(--surface-sunken))] rounded-xl border border-[hsl(var(--border))] mb-3 text-left no-scrollbar min-h-[220px]">
+                <div 
+                  ref={chillChatContainerRef}
+                  onScroll={handleChillChatScroll}
+                  className="flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y space-y-3 p-4 bg-[hsl(var(--surface-sunken))] rounded-xl border border-[hsl(var(--border))] mb-3 text-left no-scrollbar min-h-[220px]"
+                >
                   {messages.length === 0 ? (
                     <div className="h-full flex flex-col items-center justify-center text-center text-[hsl(var(--text-secondary))] space-y-2 py-8">
                       <div className="w-14 h-14 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-500 flex items-center justify-center text-2xl animate-bounce">
@@ -1392,29 +1589,32 @@ export function Room() {
                       </div>
                     </div>
                   ) : (
-                    messages.map((m) => {
-                      const isMe = m.senderId === currentSocketId;
-                      return (
-                        <div
-                          key={m.id}
-                          className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}
-                        >
-                          <div className="flex items-center gap-2 mb-0.5 text-[10px] text-[hsl(var(--text-muted))] font-mono">
-                            <span className="font-bold text-[hsl(var(--text))]">{m.sender}</span>
-                            <span>{m.time}</span>
-                          </div>
+                    <>
+                      {messages.map((m) => {
+                        const isMe = m.senderId === currentSocketId;
+                        return (
                           <div
-                            className={`max-w-[85%] px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-medium leading-relaxed shadow-sm ${
-                              isMe
-                                ? "bg-[hsl(var(--accent))] text-white rounded-br-none"
-                                : "bg-[hsl(var(--surface))] text-[hsl(var(--text))] border border-[hsl(var(--border))] rounded-bl-none"
-                            }`}
+                            key={m.id}
+                            className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}
                           >
-                            {m.text}
+                            <div className="flex items-center gap-2 mb-0.5 text-[10px] text-[hsl(var(--text-muted))] font-mono">
+                              <span className="font-bold text-[hsl(var(--text))]">{m.sender}</span>
+                              <span>{m.time}</span>
+                            </div>
+                            <div
+                              className={`max-w-[85%] px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-medium leading-relaxed shadow-sm ${
+                                isMe
+                                  ? "bg-[hsl(var(--accent))] text-white rounded-br-none"
+                                  : "bg-[hsl(var(--surface))] text-[hsl(var(--text))] border border-[hsl(var(--border))] rounded-bl-none"
+                              }`}
+                            >
+                              {m.text}
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })
+                        );
+                      })}
+                      <div ref={chillChatEndRef} />
+                    </>
                   )}
                 </div>
 
@@ -1822,7 +2022,7 @@ export function Room() {
 
         {/* Responsive Drawer Sidebar: Chat & Participants (Hidden in CHILL Mode as Center Stage is full Chat Lounge) */}
         {showChat && !isChillMode && (
-          <aside className="w-full sm:w-80 border-l border-[hsl(var(--border))] bg-[hsl(var(--surface))] flex flex-col h-full shrink-0 z-20 absolute sm:relative right-0 inset-y-0 shadow-xl sm:shadow-none transition-all duration-200">
+          <aside className="w-full sm:w-80 border-l border-[hsl(var(--border))] bg-[hsl(var(--surface))] flex flex-col h-full shrink-0 z-20 absolute sm:relative right-0 inset-y-0 shadow-xl sm:shadow-none transition-all duration-200 overflow-hidden">
             
             {/* Sidebar Header */}
             <div className="p-3 border-b border-[hsl(var(--border))] flex items-center justify-between">
@@ -1862,7 +2062,11 @@ export function Room() {
             </div>
 
             {/* Chat Messages */}
-            <div className="flex-1 p-3 overflow-y-auto space-y-2.5 no-scrollbar">
+            <div 
+              ref={chatContainerRef}
+              onScroll={handleChatScroll}
+              className="flex-1 min-h-0 p-3 overflow-y-auto overscroll-contain touch-pan-y space-y-2.5 no-scrollbar"
+            >
               <div className="text-[10px] font-bold uppercase tracking-wider text-[hsl(var(--text-muted))] mb-1">
                 Live Chat
               </div>
@@ -1883,6 +2087,7 @@ export function Room() {
                   )}
                 </div>
               ))}
+              <div ref={chatEndRef} />
             </div>
 
             {/* Chat Input */}
