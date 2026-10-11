@@ -5,9 +5,13 @@ node_modules/
 # Environment Variables & Secrets (Prevent API Key / Secret Leaks)
 .env
 .env.local
+.env.development
 .env.development.local
+.env.test
 .env.test.local
+.env.production
 .env.production.local
+.env.staging
 .env.*
 !.env.example
 *.pem
