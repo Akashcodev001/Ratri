@@ -45,6 +45,9 @@ export class Room {
   @Prop({ required: true })
   createdByIpHash: string;
 
+  @Prop()
+  emptySince?: Date;
+
   @Prop({ default: Date.now })
   lastActivityAt: Date;
 }
