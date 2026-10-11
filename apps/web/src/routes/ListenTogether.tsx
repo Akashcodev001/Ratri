@@ -1,6 +1,7 @@
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { SeoHead } from '../components/seo/SeoHead';
 import { Music, Radio, Volume2, Sparkles } from 'lucide-react';
+import { api } from '../services/api';
 
 export function ListenTogether() {
   const navigate = useNavigate();
@@ -20,9 +21,13 @@ export function ListenTogether() {
     },
   };
 
-  const handleCreateRoom = () => {
-    const code = Math.random().toString(36).substring(2, 8).toUpperCase();
-    navigate(`/r/${code}`);
+  const handleCreateRoom = async () => {
+    try {
+      const room = await api.createRoom('Music Lounge', 'chill');
+      navigate(`/r/${room.roomCode}`);
+    } catch (e) {
+      console.error('Failed to create room', e);
+    }
   };
 
   return (
@@ -84,6 +89,18 @@ export function ListenTogether() {
             <p className="text-xs text-[hsl(var(--text-secondary))] leading-relaxed">
               Choose from Study, Chill, Music Party, or Gaming atmospheres to set the ideal mood.
             </p>
+          </div>
+        </section>
+
+        {/* Related Feature Navigation */}
+        <section className="border-t border-[hsl(var(--border))] pt-8 text-center space-y-4">
+          <h2 className="text-sm font-bold text-[hsl(var(--text))]">Explore More Ways to Hang Out on Ratri</h2>
+          <div className="flex flex-wrap justify-center gap-4 text-xs font-semibold text-[hsl(var(--accent))]">
+            <Link to="/watch-together" className="hover:underline">Watch Videos Together</Link>
+            <span>•</span>
+            <Link to="/watch-party" className="hover:underline">Virtual Watch Party</Link>
+            <span>•</span>
+            <Link to="/screen-share" className="hover:underline">Screen Share Lounge</Link>
           </div>
         </section>
       </main>

@@ -3,7 +3,10 @@ const getApiUrl = () => {
     return import.meta.env.VITE_API_URL;
   }
   if (typeof window !== 'undefined' && window.location) {
-    return `${window.location.origin}/v1`;
+    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    if (isLocal) {
+      return 'http://localhost:3000/v1';
+    }
   }
   return '/v1';
 };

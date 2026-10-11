@@ -57,6 +57,7 @@ export function Home() {
   const [showChillModal, setShowChillModal] = useState(false);
   const [notifyEmail, setNotifyEmail] = useState("");
   const [subscribed, setSubscribed] = useState(false);
+  const [joinError, setJoinError] = useState<string | null>(null);
 
   const handleCreateRoom = async () => {
     if (roomType === "chill") {
@@ -70,10 +71,9 @@ export function Home() {
       const name = roomName.trim() || `${roomType.toUpperCase()} Lounge`;
       const room = await api.createRoom(name, roomType);
       navigate(`/r/${room.roomCode}`);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to create room", err);
-      const mockCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-      navigate(`/r/${mockCode}`);
+      setJoinError(err?.message || "Failed to create room. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -88,6 +88,7 @@ export function Home() {
 
   const handleJoinRoom = async (e: React.FormEvent) => {
     e.preventDefault();
+    setJoinError(null);
     if (roomCode.trim()) {
       try {
         setLoading(true);
@@ -95,9 +96,7 @@ export function Home() {
         const room = await api.getRoom(code);
         navigate(`/r/${room.roomCode}`);
       } catch (err) {
-        console.error("Failed to join room", err);
-        const code = roomCode.trim().toUpperCase();
-        navigate(`/r/${code}`);
+        setJoinError("Room expired or does not exist.");
       } finally {
         setLoading(false);
       }
@@ -107,8 +106,8 @@ export function Home() {
   return (
     <div className="min-h-[calc(100vh-3.5rem)] flex flex-col justify-between px-4 sm:px-6 lg:px-8 py-8 lg:py-12 max-w-7xl mx-auto text-left">
       <SeoHead
-        title="Ratri — Watch Videos Together Online (Zero Signup)"
-        description="Watch synchronized videos, listen to music lounges, play trivia games, and chat with friends in real-time over low-latency WebRTC voice & video. Guest-friendly, zero signups required."
+        title="Ratri — Watch Videos, Listen & Hang Out Together Online"
+        description="Ratri is a real-time social platform to watch synchronized videos, share screens, listen to music, and video/voice chat with friends online. Instant browser rooms, zero signups."
         canonicalPath="/"
         jsonLd={homeJsonLd}
       />
@@ -226,6 +225,11 @@ export function Home() {
                 Join
               </Button>
             </form>
+            {joinError && (
+              <div className="text-xs text-rose-500 font-semibold flex items-center justify-center gap-1.5 pt-1">
+                <span>⚠️ {joinError}</span>
+              </div>
+            )}
           </div>
 
           {/* Social Trust Line */}

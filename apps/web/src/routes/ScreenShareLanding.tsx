@@ -1,6 +1,7 @@
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { SeoHead } from '../components/seo/SeoHead';
 import { Monitor, Zap, Shield, Users } from 'lucide-react';
+import { api } from '../services/api';
 
 export function ScreenShareLanding() {
   const navigate = useNavigate();
@@ -20,15 +21,19 @@ export function ScreenShareLanding() {
     },
   };
 
-  const handleCreateRoom = () => {
-    const code = Math.random().toString(36).substring(2, 8).toUpperCase();
-    navigate(`/r/${code}`);
+  const handleCreateRoom = async () => {
+    try {
+      const room = await api.createRoom('Screen Stage', 'talk');
+      navigate(`/r/${room.roomCode}`);
+    } catch (e) {
+      console.error('Failed to create room', e);
+    }
   };
 
   return (
     <div className="min-h-screen bg-[hsl(var(--bg))] text-[hsl(var(--text))]">
       <SeoHead
-        title="Real-Time Screen Sharing Lounge with Friends — Ratri"
+        title="Real-Time Screen Share Lounge with Friends — Ratri"
         description="Share your browser screen, gameplay, or presentations with friends online in real-time. Ultra low-latency WebRTC streaming with instant room links."
         canonicalPath="/screen-share"
         jsonLd={jsonLd}
@@ -84,6 +89,18 @@ export function ScreenShareLanding() {
             <p className="text-xs text-[hsl(var(--text-secondary))] leading-relaxed">
               Talk and comment live with your friends while sharing your screen in full high definition.
             </p>
+          </div>
+        </section>
+
+        {/* Related Feature Navigation */}
+        <section className="border-t border-[hsl(var(--border))] pt-8 text-center space-y-4">
+          <h2 className="text-sm font-bold text-[hsl(var(--text))]">Explore More Ways to Hang Out on Ratri</h2>
+          <div className="flex flex-wrap justify-center gap-4 text-xs font-semibold text-[hsl(var(--accent))]">
+            <Link to="/watch-together" className="hover:underline">Watch Videos Together</Link>
+            <span>•</span>
+            <Link to="/watch-party" className="hover:underline">Virtual Watch Party</Link>
+            <span>•</span>
+            <Link to="/listen-together" className="hover:underline">Listen to Music Together</Link>
           </div>
         </section>
       </main>

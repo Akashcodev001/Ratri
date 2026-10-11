@@ -1,6 +1,7 @@
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { SeoHead } from '../components/seo/SeoHead';
 import { Users, Video, Zap, Shield, Play } from 'lucide-react';
+import { api } from '../services/api';
 
 export function WatchTogether() {
   const navigate = useNavigate();
@@ -20,9 +21,13 @@ export function WatchTogether() {
     },
   };
 
-  const handleCreateRoom = () => {
-    const code = Math.random().toString(36).substring(2, 8).toUpperCase();
-    navigate(`/r/${code}`);
+  const handleCreateRoom = async () => {
+    try {
+      const room = await api.createRoom('Watch Together Lounge', 'watch');
+      navigate(`/r/${room.roomCode}`);
+    } catch (e) {
+      console.error('Failed to create room', e);
+    }
   };
 
   return (
@@ -108,6 +113,17 @@ export function WatchTogether() {
               <h3 className="text-sm font-semibold text-[hsl(var(--text))]">Watch & Chat</h3>
               <p className="text-xs text-[hsl(var(--text-secondary))]">Paste your YouTube link and enjoy synced videos with live voice chat.</p>
             </div>
+          </div>
+        </section>
+        {/* Related Feature Navigation */}
+        <section className="border-t border-[hsl(var(--border))] pt-8 text-center space-y-4">
+          <h2 className="text-sm font-bold text-[hsl(var(--text))]">Explore More Ways to Hang Out on Ratri</h2>
+          <div className="flex flex-wrap justify-center gap-4 text-xs font-semibold text-[hsl(var(--accent))]">
+            <Link to="/watch-party" className="hover:underline">Virtual Watch Party</Link>
+            <span>•</span>
+            <Link to="/screen-share" className="hover:underline">Screen Share Lounge</Link>
+            <span>•</span>
+            <Link to="/listen-together" className="hover:underline">Listen to Music Together</Link>
           </div>
         </section>
       </main>
