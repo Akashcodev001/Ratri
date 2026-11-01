@@ -13,7 +13,7 @@ services:
       MONGODB_URI: mongodb://mongodb:27017/ratri?replicaSet=rs0
       REDIS_URL: redis://redis:6379
       JWT_SIGNING_KEY: ${JWT_SIGNING_KEY:-change-me-secret-key-32bytes-long}
-      CLIENT_ORIGIN: ${CLIENT_ORIGIN:-https://ratri.app,http://localhost:5173}
+      CLIENT_ORIGIN: ${CLIENT_ORIGIN:-https://ratri-silk.vercel.app,http://localhost:5173}
     depends_on:
       mongodb:
         condition: service_healthy
@@ -51,10 +51,10 @@ services:
       - "3478:3478/udp"
     environment:
       TURN_SECRET: ${TURN_SECRET:-change-me-turn-secret}
-      TURN_REALM: ratri.app
+      TURN_REALM: ${TURN_REALM:-ratri-silk.vercel.app}
     command: >
       -n --log-file=stdout --min-port=49152 --max-port=65535
-      --use-auth-secret --static-auth-secret=${TURN_SECRET:-change-me-turn-secret} --realm=ratri.app
+      --use-auth-secret --static-auth-secret=${TURN_SECRET:-change-me-turn-secret} --realm=${TURN_REALM:-ratri-silk.vercel.app}
 
 volumes:
   mongodb_prod_data:

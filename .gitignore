@@ -65,4 +65,13 @@ Thumbs.db
 .gemini/
 
 # Documentation & Internal Notes
-docs/
+docs/*
+!docs/tools/
+
+# Local Reports & Agent Context (Only README.md is pushed)
+CLAUDE.md
+RATRI_*.md
+POST_DEPLOY_*.md
+SEARCH_CONSOLE_*.md
+BRAND_PRESENCE_*.md
+NAME_COLLISION_*.md

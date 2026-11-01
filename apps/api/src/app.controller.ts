@@ -13,7 +13,10 @@ export class AppController {
   @Get('robots.txt')
   @Header('Content-Type', 'text/plain')
   getRobots(): string {
-    return `User-agent: *
+    const origin = this.getCanonicalOrigin();
+    return `# Ratri Robots Directive
+# Note: robots.txt is a crawl-budget and discovery control, not an access-control or security boundary.
+User-agent: *
 Allow: /
 Allow: /watch-together
 Allow: /watch-party
@@ -22,44 +25,55 @@ Allow: /listen-together
 Disallow: /r/
 Disallow: /v1/
 
-Sitemap: https://ratri.app/sitemap.xml`;
+Sitemap: ${origin}/sitemap.xml`;
   }
 
   @Get('sitemap.xml')
   @Header('Content-Type', 'application/xml')
   getSitemap(): string {
+    const origin = this.getCanonicalOrigin();
     return `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://ratri.app/</loc>
-    <lastmod>2026-10-06</lastmod>
-    <changefreq>daily</changefreq>
+    <loc>${origin}/</loc>
+    <lastmod>2026-11-01</lastmod>
+    <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
-    <loc>https://ratri.app/watch-together</loc>
-    <lastmod>2026-10-06</lastmod>
+    <loc>${origin}/watch-together</loc>
+    <lastmod>2026-11-01</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://ratri.app/watch-party</loc>
-    <lastmod>2026-10-06</lastmod>
+    <loc>${origin}/watch-party</loc>
+    <lastmod>2026-11-01</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://ratri.app/screen-share</loc>
-    <lastmod>2026-10-06</lastmod>
+    <loc>${origin}/screen-share</loc>
+    <lastmod>2026-11-01</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://ratri.app/listen-together</loc>
-    <lastmod>2026-10-06</lastmod>
+    <loc>${origin}/listen-together</loc>
+    <lastmod>2026-11-01</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
 </urlset>`;
+  }
+
+  private getCanonicalOrigin(): string {
+    const envUrl = process.env.SITE_URL || process.env.CLIENT_ORIGIN;
+    if (envUrl) {
+      const origins = envUrl.split(',').map((o) => o.trim());
+      const httpsOrigin = origins.find((o) => o.startsWith('https://'));
+      if (httpsOrigin) return httpsOrigin.replace(/\/+$/, '');
+    }
+    return 'https://ratri-silk.vercel.app';
   }
 }

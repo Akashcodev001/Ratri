@@ -23,6 +23,7 @@ import {
 import { api } from "../services/api";
 import { prefetchRoomChunk } from "../App";
 import heroShowcaseImg from "../assets/hero_showcase.jpg";
+import { SITE_URL, getCanonicalUrl } from "../config/site";
 
 export function Home() {
   const navigate = useNavigate();
@@ -35,11 +36,11 @@ export function Home() {
       '@context': 'https://schema.org',
       '@type': 'WebSite',
       name: 'Ratri',
-      url: 'https://ratri.app/',
+      url: getCanonicalUrl('/'),
       description: 'Real-time social watch party & spatial voice lounge platform.',
       potentialAction: {
         '@type': 'SearchAction',
-        target: 'https://ratri.app/r/{search_term_string}',
+        target: `${SITE_URL}/r/{search_term_string}`,
         'query-input': 'required name=search_term_string',
       },
     },
@@ -47,7 +48,7 @@ export function Home() {
       '@context': 'https://schema.org',
       '@type': 'WebApplication',
       name: 'Ratri',
-      url: 'https://ratri.app',
+      url: SITE_URL,
       description: 'Watch synchronized videos, listen to music, play trivia games, and talk in real-time with friends.',
       applicationCategory: 'SocialNetworkingApplication',
       operatingSystem: 'All',
@@ -106,8 +107,8 @@ export function Home() {
   return (
     <div className="min-h-[calc(100vh-3.5rem)] flex flex-col justify-between px-4 sm:px-6 lg:px-8 py-8 lg:py-12 max-w-7xl mx-auto text-left">
       <SeoHead
-        title="Ratri — Watch Videos, Listen & Hang Out Together Online"
-        description="Ratri is a real-time social platform to watch synchronized videos, share screens, listen to music, and video/voice chat with friends online. Instant browser rooms, zero signups."
+        title="Ratri — Watch, Listen & Hang Out Together Online"
+        description="Ratri is a real-time social room platform where friends can watch videos together, talk over voice or video, share screens, listen together, and hang out online."
         canonicalPath="/"
         jsonLd={homeJsonLd}
       />
@@ -119,8 +120,8 @@ export function Home() {
         <div className="lg:col-span-6 space-y-6">
           <div className="space-y-4">
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-[hsl(var(--text))] leading-[1.1]">
-              The cozy corner to <br />
-              <span className="text-[hsl(var(--accent))]">watch, listen & hang out.</span>
+              Watch Videos Together, <br />
+              <span className="text-[hsl(var(--accent))]">Talk & Hang Out Online with Ratri</span>
             </h1>
             <p className="text-base sm:text-lg text-[hsl(var(--text-secondary))] max-w-xl font-normal leading-relaxed">
               Create a room in 1 second. Share the link with friends to watch videos, listen to music, and talk over low-latency audio—no signups or downloads needed.
@@ -560,7 +561,7 @@ export function Home() {
                 <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
               </a>
               <a
-                href="https://ratri.app"
+                href={SITE_URL}
                 target="_blank"
                 rel="noreferrer"
                 className="w-8 h-8 rounded-xl bg-[hsl(var(--surface-elevated))] border border-[hsl(var(--border))] flex items-center justify-center text-[hsl(var(--text))] hover:bg-[hsl(var(--accent))] hover:text-white transition-all cursor-pointer shadow-xs"

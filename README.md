@@ -4,10 +4,10 @@
 
   <img src="apps/web/public/favicon.svg" alt="RATRI Logo" width="100" height="100" />
 
-  <h1 align="center"><b>RATRI — Real-Time Watch & Spatial Talk Platform</b></h1>
+  <h1 align="center"><b>Ratri — Watch, Listen & Hang Out Together Online</b></h1>
 
   <p align="center">
-    <b>Synchronized Media Playback • WebRTC Voice & Video • Spatial Music Lounge • Screen Sharing</b>
+    <b>Real-Time Watch Party • Synchronized Media Playback • WebRTC Voice & Video • Screen Sharing</b>
   </p>
 
   <p align="center">
@@ -33,9 +33,9 @@
 
 ## 🌟 Overview
 
-**RATRI** (night / midnight lounge) is a state-of-the-art, real-time social platform built for seamless synchronized video watching, low-latency WebRTC voice and video calls, spatial music listening, and high-definition screen sharing. 
+**Ratri** is a real-time social watch-together platform for watching videos, voice/video chatting, screen sharing, and hanging out with friends online.
 
-Designed with a **guest-first philosophy**, users can create or join watch parties in under 2 seconds without tedious sign-up forms or downloads.
+Designed with a **guest-first philosophy**, users can create an instant room in seconds, share a link or code, and invite friends to watch, talk, and listen together—with zero mandatory signups or software downloads.
 
 ### ⚡ Key Features
 

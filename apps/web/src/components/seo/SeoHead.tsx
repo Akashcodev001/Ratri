@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { SITE_URL, DEFAULT_OG_IMAGE, getCanonicalUrl, getAbsoluteUrl } from '../../config/site';
 
 export interface SeoHeadProps {
   title: string;
@@ -10,15 +11,13 @@ export interface SeoHeadProps {
   jsonLd?: Record<string, any> | Record<string, any>[];
 }
 
-const DOMAIN = 'https://ratri.app';
-
 export function SeoHead({
   title,
   description,
   canonicalPath = '/',
   noindex = false,
   ogType = 'website',
-  ogImage = `${DOMAIN}/hero_showcase.jpg`,
+  ogImage = DEFAULT_OG_IMAGE,
   jsonLd,
 }: SeoHeadProps) {
   useEffect(() => {
@@ -47,7 +46,8 @@ export function SeoHead({
       element.setAttribute('href', href);
     };
 
-    const fullCanonical = `${DOMAIN}${canonicalPath.startsWith('/') ? canonicalPath : '/' + canonicalPath}`;
+    const fullCanonical = getCanonicalUrl(canonicalPath);
+    const resolvedOgImage = getAbsoluteUrl(ogImage);
 
     // 2. Primary Meta Tags
     setMetaTag('meta[name="description"]', 'name', 'description', description);
@@ -59,14 +59,14 @@ export function SeoHead({
     setMetaTag('meta[property="og:description"]', 'property', 'og:description', description);
     setMetaTag('meta[property="og:url"]', 'property', 'og:url', fullCanonical);
     setMetaTag('meta[property="og:type"]', 'property', 'og:type', ogType);
-    setMetaTag('meta[property="og:image"]', 'property', 'og:image', ogImage);
+    setMetaTag('meta[property="og:image"]', 'property', 'og:image', resolvedOgImage);
 
     // 4. Twitter Cards
     setMetaTag('meta[property="twitter:card"]', 'property', 'twitter:card', 'summary_large_image');
     setMetaTag('meta[property="twitter:title"]', 'property', 'twitter:title', title);
     setMetaTag('meta[property="twitter:description"]', 'property', 'twitter:description', description);
     setMetaTag('meta[property="twitter:url"]', 'property', 'twitter:url', fullCanonical);
-    setMetaTag('meta[property="twitter:image"]', 'property', 'twitter:image', ogImage);
+    setMetaTag('meta[property="twitter:image"]', 'property', 'twitter:image', resolvedOgImage);
 
     // 5. Dynamic JSON-LD Structured Data
     const scriptId = 'dynamic-json-ld';
@@ -86,3 +86,5 @@ export function SeoHead({
 
   return null;
 }
+
+export { SITE_URL };

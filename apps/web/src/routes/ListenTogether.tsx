@@ -2,6 +2,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { SeoHead } from '../components/seo/SeoHead';
 import { Music, Radio, Volume2, Sparkles } from 'lucide-react';
 import { api } from '../services/api';
+import { getCanonicalUrl } from '../config/site';
 
 export function ListenTogether() {
   const navigate = useNavigate();
@@ -10,13 +11,13 @@ export function ListenTogether() {
     '@context': 'https://schema.org',
     '@type': 'WebPage',
     name: 'Listen to Music Together Online — Ratri',
-    url: 'https://ratri.app/listen-together',
+    url: getCanonicalUrl('/listen-together'),
     description: 'Listen to music together with friends in virtual sound lounges. Synchronized audio playback with spatial voice chat.',
     breadcrumb: {
       '@type': 'BreadcrumbList',
       itemListElement: [
-        { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://ratri.app/' },
-        { '@type': 'ListItem', position: 2, name: 'Listen Together', item: 'https://ratri.app/listen-together' },
+        { '@type': 'ListItem', position: 1, name: 'Home', item: getCanonicalUrl('/') },
+        { '@type': 'ListItem', position: 2, name: 'Listen Together', item: getCanonicalUrl('/listen-together') },
       ],
     },
   };

@@ -2,6 +2,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { SeoHead } from '../components/seo/SeoHead';
 import { Monitor, Zap, Shield, Users } from 'lucide-react';
 import { api } from '../services/api';
+import { getCanonicalUrl } from '../config/site';
 
 export function ScreenShareLanding() {
   const navigate = useNavigate();
@@ -10,13 +11,13 @@ export function ScreenShareLanding() {
     '@context': 'https://schema.org',
     '@type': 'WebPage',
     name: 'Real-Time Screen Sharing Lounge — Ratri',
-    url: 'https://ratri.app/screen-share',
+    url: getCanonicalUrl('/screen-share'),
     description: 'Share your screen with friends online in real-time. High-quality WebRTC video streaming with low latency and spatial voice chat.',
     breadcrumb: {
       '@type': 'BreadcrumbList',
       itemListElement: [
-        { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://ratri.app/' },
-        { '@type': 'ListItem', position: 2, name: 'Screen Share', item: 'https://ratri.app/screen-share' },
+        { '@type': 'ListItem', position: 1, name: 'Home', item: getCanonicalUrl('/') },
+        { '@type': 'ListItem', position: 2, name: 'Screen Share', item: getCanonicalUrl('/screen-share') },
       ],
     },
   };
