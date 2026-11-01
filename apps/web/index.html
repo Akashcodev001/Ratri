@@ -82,6 +82,52 @@
             "Real-time audio listening lounges",
             "Instant room creation with zero signup required"
           ]
+        },
+        {
+          "@context": "https://schema.org",
+          "@type": "FAQPage",
+          "mainEntity": [
+            {
+              "@type": "Question",
+              "name": "What is Ratri and what does the name mean?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Ratri (derived from the Sanskrit and Hindi word for night or the midnight lounge) is a real-time social room platform designed for friends to watch synchronized videos, listen to music, talk over WebRTC voice and video, and share screens together online."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Do I or my friends need an account to use Ratri?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "No. Ratri is built with a guest-first philosophy. Anyone can create an instant room in one second, share the room link or 6-character code with friends, and start watching or talking immediately with zero signups or software downloads."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "How does video synchronization work on Ratri?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Ratri uses WebSocket signaling through Socket.IO to mirror video playback state across all connected participants. When the room host plays, pauses, or seeks in a video, the exact playback timestamp is synchronized across all peers in sub-second time."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Can I share my screen with audio on Ratri?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Yes. Ratri provides native in-browser WebRTC screen sharing. You can share your full screen, an application window, or a browser tab directly inside the room without installing external extensions."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Is Ratri an OTT movie streaming app or subscription service?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "No. Ratri is not an OTT streaming service, piracy platform, or movie download site. It is an interactive real-time social platform for synchronized watch parties, voice chat, and shared screen lounges."
+              }
+            }
+          ]
         }
       ]
     </script>

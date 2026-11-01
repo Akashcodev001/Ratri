@@ -18,7 +18,8 @@ import {
   Heart,
   Bell,
   CheckCircle2,
-  Globe
+  Globe,
+  HelpCircle
 } from "lucide-react";
 import { api } from "../services/api";
 import { prefetchRoomChunk } from "../App";
@@ -52,6 +53,52 @@ export function Home() {
       description: 'Watch synchronized videos, listen to music, play trivia games, and talk in real-time with friends.',
       applicationCategory: 'SocialNetworkingApplication',
       operatingSystem: 'All',
+    },
+    {
+      '@context': 'https://schema.org',
+      '@type': 'FAQPage',
+      mainEntity: [
+        {
+          '@type': 'Question',
+          name: 'What is Ratri and what does the name mean?',
+          acceptedAnswer: {
+            '@type': 'Answer',
+            text: 'Ratri (derived from the Sanskrit and Hindi word for night or the midnight lounge) is a real-time social room platform designed for friends to watch synchronized videos, listen to music, talk over WebRTC voice and video, and share screens together online.',
+          },
+        },
+        {
+          '@type': 'Question',
+          name: 'Do I or my friends need an account to use Ratri?',
+          acceptedAnswer: {
+            '@type': 'Answer',
+            text: 'No. Ratri is built with a guest-first philosophy. Anyone can create an instant room in one second, share the room link or 6-character code with friends, and start watching or talking immediately with zero signups or software downloads.',
+          },
+        },
+        {
+          '@type': 'Question',
+          name: 'How does video synchronization work on Ratri?',
+          acceptedAnswer: {
+            '@type': 'Answer',
+            text: 'Ratri uses WebSocket signaling through Socket.IO to mirror video playback state across all connected participants. When the room host plays, pauses, or seeks in a video, the exact playback timestamp is synchronized across all peers in sub-second time.',
+          },
+        },
+        {
+          '@type': 'Question',
+          name: 'Can I share my screen with audio on Ratri?',
+          acceptedAnswer: {
+            '@type': 'Answer',
+            text: 'Yes. Ratri provides native in-browser WebRTC screen sharing. You can share your full screen, an application window, or a browser tab directly inside the room without installing external extensions.',
+          },
+        },
+        {
+          '@type': 'Question',
+          name: 'Is Ratri an OTT movie streaming app or subscription service?',
+          acceptedAnswer: {
+            '@type': 'Answer',
+            text: 'No. Ratri is not an OTT streaming service, piracy platform, or movie download site. It is an interactive real-time social platform for synchronized watch parties, voice chat, and shared screen lounges.',
+          },
+        },
+      ],
     },
   ];
   const [loading, setLoading] = useState(false);
@@ -474,6 +521,118 @@ export function Home() {
 
         </div>
       </div>
+
+      {/* WHAT IS RATRI — IN-DEPTH BRAND IDENTITY & ARCHITECTURE SECTION */}
+      <section className="mt-20 space-y-12 text-left border-t border-[hsl(var(--border))] pt-16">
+        <div className="max-w-3xl space-y-4">
+          <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-[hsl(var(--accent))/0.1] border border-[hsl(var(--accent))/0.2] text-[hsl(var(--accent))] text-xs font-bold tracking-wide uppercase">
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>The Story & Mission Behind Ratri</span>
+          </div>
+          <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-[hsl(var(--text))] leading-tight">
+            What is Ratri? The Real-Time Midnight Lounge for Modern Friends
+          </h2>
+          <p className="text-base text-[hsl(var(--text-secondary))] leading-relaxed font-normal">
+            Derived from the Sanskrit and Hindi word for <span className="font-semibold text-[hsl(var(--text))]">"night"</span>, 
+            <span className="font-semibold text-[hsl(var(--accent))]"> Ratri</span> was born out of a simple observation: the best conversations, 
+            movie nights, and study sessions happen late at night when the world goes quiet. However, hanging out with friends online has historically 
+            felt clunky—plagued by mandatory signups, invasive software downloads, out-of-sync video streams, and complicated room setups.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 text-left">
+          <div className="rat-card p-6 space-y-3.5">
+            <div className="w-10 h-10 rounded-xl bg-[hsl(var(--accent))/0.1] text-[hsl(var(--accent))] flex items-center justify-center font-bold">
+              <Tv className="w-5 h-5" />
+            </div>
+            <h3 className="text-lg font-bold text-[hsl(var(--text))]">Sub-Second Video Playback Synchronization</h3>
+            <p className="text-xs sm:text-sm text-[hsl(var(--text-secondary))] leading-relaxed">
+              Ratri solves video drift with a dedicated WebSocket state relay powered by Socket.IO. When the room host hits play, pauses, or seeks 
+              to a specific timestamp, the command mirrors across every connected peer in under 100 milliseconds. Whether you are watching 
+              YouTube videos, tutorials, or shared web clips, everyone reacts together to the exact same frame.
+            </p>
+          </div>
+
+          <div className="rat-card p-6 space-y-3.5">
+            <div className="w-10 h-10 rounded-xl bg-[hsl(var(--accent))/0.1] text-[hsl(var(--accent))] flex items-center justify-center font-bold">
+              <Users className="w-5 h-5" />
+            </div>
+            <h3 className="text-lg font-bold text-[hsl(var(--text))]">WebRTC Mesh Voice, Video & Screen Sharing</h3>
+            <p className="text-xs sm:text-sm text-[hsl(var(--text-secondary))] leading-relaxed">
+              No need to launch Discord, Zoom, or Google Meet alongside your stream. Ratri integrates direct browser-to-browser WebRTC media channels. 
+              Enjoy crystal-clear spatial voice chat, high-definition webcam feeds, and native screen sharing for streaming documents, creative software, 
+              or browser tabs without third-party extensions.
+            </p>
+          </div>
+
+          <div className="rat-card p-6 space-y-3.5">
+            <div className="w-10 h-10 rounded-xl bg-[hsl(var(--accent))/0.1] text-[hsl(var(--accent))] flex items-center justify-center font-bold">
+              <ShieldCheck className="w-5 h-5" />
+            </div>
+            <h3 className="text-lg font-bold text-[hsl(var(--text))]">Guest-First Philosophy & Ephemeral Privacy</h3>
+            <p className="text-xs sm:text-sm text-[hsl(var(--text-secondary))] leading-relaxed">
+              Ratri is completely frictionless. You do not need to create an account, remember passwords, or hand over personal data. 
+              Rooms are protected with strict boundaries, and ephemeral rooms automatically expire 5 minutes after all participants depart, 
+              leaving zero residual chat or media logs behind.
+            </p>
+          </div>
+
+          <div className="rat-card p-6 space-y-3.5">
+            <div className="w-10 h-10 rounded-xl bg-[hsl(var(--accent))/0.1] text-[hsl(var(--accent))] flex items-center justify-center font-bold">
+              <Globe className="w-5 h-5" />
+            </div>
+            <h3 className="text-lg font-bold text-[hsl(var(--text))]">Not an OTT Subscription Service</h3>
+            <p className="text-xs sm:text-sm text-[hsl(var(--text-secondary))] leading-relaxed">
+              It is important to understand what Ratri is not: Ratri is neither an OTT subscription movie provider nor a content piracy service. 
+              Instead, Ratri is an open, modern social hangout utility designed to bring remote friends, families, and creative communities closer 
+              together in shared virtual rooms.
+            </p>
+          </div>
+        </div>
+
+        {/* FREQUENTLY ASKED QUESTIONS ACCORDION / GRID */}
+        <div className="space-y-6 pt-8">
+          <div className="space-y-2">
+            <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[hsl(var(--text))] flex items-center gap-2.5">
+              <HelpCircle className="w-6 h-6 text-[hsl(var(--accent))]" />
+              <span>Frequently Asked Questions About Ratri</span>
+            </h2>
+            <p className="text-xs sm:text-sm text-[hsl(var(--text-secondary))]">
+              Everything you need to know about using Ratri for watch parties, voice hangouts, and screen sharing.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="ui-card p-5 rounded-2xl border border-[hsl(var(--border))] space-y-2">
+              <h3 className="text-sm font-bold text-[hsl(var(--text))]">How do I create and share a Ratri room?</h3>
+              <p className="text-xs text-[hsl(var(--text-secondary))] leading-relaxed">
+                Choose your room type on the homepage (Watch, Voice, or Chill), type an optional title, and click "Create Instant Room". Copy the room URL or unique 6-character code and send it to your friends. They join instantly through any modern web browser.
+              </p>
+            </div>
+
+            <div className="ui-card p-5 rounded-2xl border border-[hsl(var(--border))] space-y-2">
+              <h3 className="text-sm font-bold text-[hsl(var(--text))]">Is Ratri free to use?</h3>
+              <p className="text-xs text-[hsl(var(--text-secondary))] leading-relaxed">
+                Yes, Ratri is 100% free with no hidden charges, paywalls, or subscription tiers. We believe hanging out with friends online should be as open and natural as sitting on the same couch.
+              </p>
+            </div>
+
+            <div className="ui-card p-5 rounded-2xl border border-[hsl(var(--border))] space-y-2">
+              <h3 className="text-sm font-bold text-[hsl(var(--text))]">Do my friends need to install any software?</h3>
+              <p className="text-xs text-[hsl(var(--text-secondary))] leading-relaxed">
+                Zero installations. Ratri runs entirely inside modern web browsers (Chrome, Firefox, Safari, Edge) on desktop, laptop, tablet, and mobile devices using standard HTML5, WebSockets, and WebRTC protocols.
+              </p>
+            </div>
+
+            <div className="ui-card p-5 rounded-2xl border border-[hsl(var(--border))] space-y-2">
+              <h3 className="text-sm font-bold text-[hsl(var(--text))]">Can I stream my screen or tabs with audio?</h3>
+              <p className="text-xs text-[hsl(var(--text-secondary))] leading-relaxed">
+                Yes. Click the screen share button inside your active Ratri room to stream your entire monitor, a window, or an individual browser tab. System audio is supported on Chromium-based browsers for high-quality audio sharing.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
 
       {/* HUMAN-CRAFTED PROFESSIONAL LEVEL FOOTER */}
       <footer className="mt-20 border-t border-[hsl(var(--border))] pt-12 pb-8 text-left space-y-10">
