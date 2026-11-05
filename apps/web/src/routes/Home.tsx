@@ -663,21 +663,26 @@ export function Home() {
           <div className="md:col-span-2 space-y-3">
             <h4 className="text-xs font-extrabold uppercase tracking-wider text-[hsl(var(--text))]">Room Modes</h4>
             <ul className="space-y-2 text-xs text-[hsl(var(--text-secondary))] font-medium">
-              <li className="hover:text-[hsl(var(--accent))] transition-colors cursor-pointer flex items-center gap-1.5">
-                <span>🍿 Watch Party</span>
+              <li>
+                <Link to="/watch-party" className="hover:text-[hsl(var(--accent))] transition-colors flex items-center gap-1.5">
+                  <span>🍿 Watch Party</span>
+                </Link>
               </li>
-              <li className="hover:text-[hsl(var(--accent))] transition-colors cursor-pointer flex items-center gap-1.5">
-                <span>🎙️ Voice Lounge</span>
+              <li>
+                <Link to="/watch-together" className="hover:text-[hsl(var(--accent))] transition-colors flex items-center gap-1.5">
+                  <span>📺 Watch Together</span>
+                </Link>
               </li>
-              <li className="hover:text-[hsl(var(--accent))] transition-colors cursor-pointer flex items-center gap-1.5">
-                <span>⚡ Chill Chat</span>
+              <li>
+                <Link to="/screen-share" className="hover:text-[hsl(var(--accent))] transition-colors flex items-center gap-1.5">
+                  <span>🖥️ Screen Share</span>
+                </Link>
               </li>
-              <li className="hover:text-[hsl(var(--accent))] transition-colors cursor-pointer flex items-center gap-1.5">
-                <span>🎮 Arcade Arena</span>
-              </li>
-              <li className="hover:text-[hsl(var(--accent))] transition-colors cursor-pointer flex items-center gap-1.5">
-                <span>🎵 Song Lounge</span>
-                <span className="text-[9px] px-1.5 py-0.2 rounded bg-rose-500/15 text-rose-400 font-bold border border-rose-500/25 uppercase">Soon</span>
+              <li>
+                <Link to="/listen-together" className="hover:text-[hsl(var(--accent))] transition-colors flex items-center gap-1.5">
+                  <span>🎵 Song Lounge</span>
+                  <span className="text-[9px] px-1.5 py-0.2 rounded bg-rose-500/15 text-rose-400 font-bold border border-rose-500/25 uppercase">Soon</span>
+                </Link>
               </li>
             </ul>
           </div>
@@ -686,11 +691,21 @@ export function Home() {
           <div className="md:col-span-2 space-y-3">
             <h4 className="text-xs font-extrabold uppercase tracking-wider text-[hsl(var(--text))]">Features</h4>
             <ul className="space-y-2 text-xs text-[hsl(var(--text-secondary))] font-medium">
-              <li className="hover:text-[hsl(var(--accent))] transition-colors cursor-pointer">Frame Sync Engine</li>
-              <li className="hover:text-[hsl(var(--accent))] transition-colors cursor-pointer">WebRTC Mesh VC</li>
-              <li className="hover:text-[hsl(var(--accent))] transition-colors cursor-pointer">Screen Sharing</li>
-              <li className="hover:text-[hsl(var(--accent))] transition-colors cursor-pointer">Random Matchmaking</li>
-              <li className="hover:text-[hsl(var(--accent))] transition-colors cursor-pointer">Instant Guest Join</li>
+              <li>
+                <Link to="/watch-together" className="hover:text-[hsl(var(--accent))] transition-colors">Frame Sync Engine</Link>
+              </li>
+              <li>
+                <Link to="/watch-party" className="hover:text-[hsl(var(--accent))] transition-colors">WebRTC Mesh VC</Link>
+              </li>
+              <li>
+                <Link to="/screen-share" className="hover:text-[hsl(var(--accent))] transition-colors">Screen Sharing</Link>
+              </li>
+              <li>
+                <Link to="/listen-together" className="hover:text-[hsl(var(--accent))] transition-colors">Music Lounges</Link>
+              </li>
+              <li>
+                <Link to="/" className="hover:text-[hsl(var(--accent))] transition-colors">Instant Guest Join</Link>
+              </li>
             </ul>
           </div>
 

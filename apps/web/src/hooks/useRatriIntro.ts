@@ -12,6 +12,17 @@ export interface UseRatriIntroReturn {
 export function useRatriIntro(): UseRatriIntroReturn {
   const [shouldShowIntro, setShouldShowIntro] = useState<boolean>(() => {
     if (typeof window === "undefined") return false;
+    try {
+      const ua = (typeof navigator !== "undefined" && navigator.userAgent) ? navigator.userAgent : "";
+      if (/bot|googlebot|crawler|spider|robot|crawling|bingbot|yandex|duckduckbot|slurp|facebookexternalhit|twitterbot|lighthouse/i.test(ua)) {
+        return false;
+      }
+      if (sessionStorage.getItem(INTRO_CONFIG.storageKey) === "true") {
+        return false;
+      }
+    } catch {
+      // Browser storage access fallback
+    }
     return true;
   });
 
