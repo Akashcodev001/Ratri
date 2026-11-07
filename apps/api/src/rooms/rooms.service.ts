@@ -142,7 +142,7 @@ export class RoomsService implements OnModuleInit, OnModuleDestroy {
           lastActivityAt: now,
         },
       },
-      { new: true, lean: true }
+      { returnDocument: 'after', lean: true }
     ).exec();
 
     if (updated) {
