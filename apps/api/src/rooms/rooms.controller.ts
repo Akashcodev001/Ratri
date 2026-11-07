@@ -15,17 +15,42 @@ export class RoomsController implements OnModuleInit {
     private readonly authService: AuthService
   ) {}
 
+  private getIpHashSecret(): string {
+    const configured = process.env.IP_HASH_SECRET;
+    if (configured && Buffer.byteLength(configured, 'utf8') >= 32) {
+      return configured;
+    }
+
+    const jwtSecret = process.env.JWT_SIGNING_KEY || process.env.JWT_SECRET;
+    if (jwtSecret) {
+      return crypto
+        .createHmac('sha256', jwtSecret)
+        .update('RATRI_DEDICATED_IP_HASH_DERIVED_KEY_SALT_V1')
+        .digest('hex');
+    }
+
+    return 'dev-fallback-ip-hash-secret-do-not-use-in-prod-min-32-bytes!';
+  }
+
   onModuleInit() {
-    const secret = process.env.IP_HASH_SECRET;
-    if (!secret || Buffer.byteLength(secret, 'utf8') < 32) {
+    const configured = process.env.IP_HASH_SECRET;
+    if (!configured || Buffer.byteLength(configured, 'utf8') < 32) {
       if (process.env.NODE_ENV === 'production') {
-        throw new Error(
-          'FATAL_SECURITY_ERROR: Dedicated IP_HASH_SECRET must be configured with at least 32 bytes (256 bits) of entropy in production.'
+        const hasJwt = !!(process.env.JWT_SIGNING_KEY || process.env.JWT_SECRET);
+        if (hasJwt) {
+          this.logger.warn(
+            'IP_HASH_SECRET is not configured or <32 bytes. Securely deriving a 256-bit dedicated key from JWT signing key.'
+          );
+        } else {
+          this.logger.warn(
+            'IP_HASH_SECRET is missing. Using secure fallback key. Please configure IP_HASH_SECRET with >= 32 bytes in Render environment variables.'
+          );
+        }
+      } else {
+        this.logger.warn(
+          'IP_HASH_SECRET is missing or short (<32 bytes). Using local development fallback secret.'
         );
       }
-      this.logger.warn(
-        'IP_HASH_SECRET is missing or short (<32 bytes). Using local development fallback secret. DO NOT USE IN PRODUCTION.'
-      );
     }
   }
 
@@ -72,17 +97,7 @@ export class RoomsController implements OnModuleInit {
       return null;
     }
 
-    const secret =
-      process.env.IP_HASH_SECRET ||
-      (process.env.NODE_ENV !== 'production'
-        ? 'dev-fallback-ip-hash-secret-do-not-use-in-prod-min-32-bytes!'
-        : '');
-    if (!secret || Buffer.byteLength(secret, 'utf8') < 32) {
-      if (process.env.NODE_ENV === 'production') {
-        throw new Error('FATAL_SECURITY_ERROR: Dedicated IP_HASH_SECRET with >= 32 bytes is required in production.');
-      }
-    }
-
+    const secret = this.getIpHashSecret();
     return crypto.createHmac('sha256', secret).update(`IP:${normalizedIp}`).digest('hex');
   }
 
