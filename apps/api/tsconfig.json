@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+    "rootDir": "./src",
     "module": "commonjs",
     "moduleResolution": "bundler",
     "esModuleInterop": true,
@@ -17,5 +18,7 @@
     "strict": true,
     "strictPropertyInitialization": false,
     "types": ["node"]
-  }
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "test", "**/*spec.ts"]
 }

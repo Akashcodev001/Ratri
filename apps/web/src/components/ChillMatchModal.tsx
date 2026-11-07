@@ -64,7 +64,7 @@ export function ChillMatchModal({
     setMatchingState("SEARCHING");
 
     const socket = io(getSocketUrl(), {
-      transports: ["polling", "websocket"],
+      transports: ["websocket", "polling"],
       autoConnect: true,
     });
     socketRef.current = socket;

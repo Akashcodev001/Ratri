@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -8,6 +8,7 @@ import {
   Users, 
   MessageSquare, 
   ArrowRight, 
+  Loader2,
   Tv, 
   Zap, 
   Volume2,
@@ -106,24 +107,37 @@ export function Home() {
   const [notifyEmail, setNotifyEmail] = useState("");
   const [subscribed, setSubscribed] = useState(false);
   const [joinError, setJoinError] = useState<string | null>(null);
+  const isCreatingRef = useRef(false);
+
+  // Background non-blocking pre-warmup ping to eliminate cold-start latency
+  useEffect(() => {
+    api.warmup();
+  }, []);
 
   const handleCreateRoom = async () => {
+    if (isCreatingRef.current || loading) return;
+
     if (roomType === "chill") {
       setShowChillModal(true);
       return;
     }
 
+    isCreatingRef.current = true;
     prefetchRoomChunk();
     try {
       setLoading(true);
+      setJoinError(null);
       const name = roomName.trim() || `${roomType.toUpperCase()} Lounge`;
       const room = await api.createRoom(name, roomType);
-      navigate(`/r/${room.roomCode}`);
+      navigate(`/r/${room.roomCode}`, {
+        state: { initialRoom: room, isCreator: true }
+      });
     } catch (err: any) {
       console.error("Failed to create room", err);
       setJoinError(err?.message || "Failed to create room. Please try again.");
     } finally {
       setLoading(false);
+      isCreatingRef.current = false;
     }
   };
 
@@ -240,10 +254,19 @@ export function Home() {
                 size="lg"
                 onClick={handleCreateRoom}
                 disabled={loading}
-                className="w-full h-11 text-sm font-bold rounded-lg bg-[hsl(var(--accent))] text-white hover:bg-[hsl(var(--accent-hover))] transition-colors group cursor-pointer shadow-md"
+                className="w-full h-11 text-sm font-bold rounded-lg bg-[hsl(var(--accent))] text-white hover:bg-[hsl(var(--accent-hover))] transition-colors group cursor-pointer shadow-md disabled:opacity-75"
               >
-                <span>{loading ? "Creating..." : roomType === "chill" ? "Start Random Chill Match ⚡" : "Create Instant Room"}</span>
-                <ArrowRight className="w-4 h-4 ml-1.5 group-hover:translate-x-1 transition-transform" />
+                {loading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin text-white" />
+                    <span>Creating your room...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>{roomType === "chill" ? "Start Random Chill Match ⚡" : "Create Instant Room"}</span>
+                    <ArrowRight className="w-4 h-4 ml-1.5 group-hover:translate-x-1 transition-transform" />
+                  </>
+                )}
               </Button>
             </div>
 

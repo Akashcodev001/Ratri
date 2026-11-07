@@ -63,15 +63,16 @@ Thumbs.db
 # Temporary & Local Tool Files
 .cache/
 .gemini/
+graphify-out/
+.graphify/
+security/
 
 # Documentation & Internal Notes
 docs/*
 !docs/tools/
 
-# Local Reports & Agent Context (Only README.md is pushed)
-CLAUDE.md
-RATRI_*.md
-POST_DEPLOY_*.md
-SEARCH_CONSOLE_*.md
-BRAND_PRESENCE_*.md
-NAME_COLLISION_*.md
+# Markdown Files & Reports (Only README.md is pushed to GitHub, all other .md files are ignored)
+*.md
+**/*.md
+!README.md
+!**/README.md

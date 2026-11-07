@@ -21,25 +21,36 @@ describe('RoomsService Durable 5-Minute Room Expiration & Lifecycle', () => {
 
       static findOne = vi.fn().mockImplementation((query: any) => {
         const room = roomStore.get(query.roomCode);
+        const res = room ? { ...room } : null;
         return {
-          exec: vi.fn().mockResolvedValue(room ? { ...room } : null),
+          lean: () => ({ exec: vi.fn().mockResolvedValue(res) }),
+          exec: vi.fn().mockResolvedValue(res),
         };
       });
 
       static findOneAndUpdate = vi.fn().mockImplementation((query: any, update: any) => {
         const room = roomStore.get(query.roomCode);
         if (!room) {
-          return { exec: vi.fn().mockResolvedValue(null) };
+          return {
+            lean: () => ({ exec: vi.fn().mockResolvedValue(null) }),
+            exec: vi.fn().mockResolvedValue(null),
+          };
         }
 
         // Check status condition
         if (query.status?.$in && !query.status.$in.includes(room.status)) {
-          return { exec: vi.fn().mockResolvedValue(null) };
+          return {
+            lean: () => ({ exec: vi.fn().mockResolvedValue(null) }),
+            exec: vi.fn().mockResolvedValue(null),
+          };
         }
 
         // Check expiresAt condition
         if (query.expiresAt?.$gt && !(room.expiresAt > query.expiresAt.$gt)) {
-          return { exec: vi.fn().mockResolvedValue(null) };
+          return {
+            lean: () => ({ exec: vi.fn().mockResolvedValue(null) }),
+            exec: vi.fn().mockResolvedValue(null),
+          };
         }
 
         const updated = {
@@ -47,7 +58,10 @@ describe('RoomsService Durable 5-Minute Room Expiration & Lifecycle', () => {
           ...update.$set,
         };
         roomStore.set(query.roomCode, updated);
-        return { exec: vi.fn().mockResolvedValue(updated) };
+        return {
+          lean: () => ({ exec: vi.fn().mockResolvedValue(updated) }),
+          exec: vi.fn().mockResolvedValue(updated),
+        };
       });
 
       static updateOne = vi.fn().mockImplementation((query: any, update: any) => {

@@ -22,6 +22,11 @@ import { AuthModule } from './auth/auth.module';
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
         uri: configService.get<string>('MONGODB_URI') || 'mongodb://localhost:27017/ratri?replicaSet=rs0',
+        minPoolSize: 5,
+        maxPoolSize: 20,
+        serverSelectionTimeoutMS: 5000,
+        socketTimeoutMS: 45000,
+        autoIndex: process.env.NODE_ENV !== 'production',
       }),
       inject: [ConfigService],
     }),

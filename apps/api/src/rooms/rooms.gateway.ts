@@ -72,6 +72,7 @@ const isWebSocketOriginAllowed = (origin: string | undefined): boolean => {
   transports: ['polling', 'websocket'],
   pingInterval: 10000,
   pingTimeout: 5000,
+  maxHttpBufferSize: 1e6, // 1MB payload ceiling against buffer exhaustion DoS
 })
 export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
@@ -85,6 +86,14 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private roomHostMemberIds = new Map<string, string>(); // roomCode -> hostMemberId
   private clientMemberIds = new Map<string, string>(); // socketId -> memberId
   private roomMemberHistory = new Map<string, Map<string, { name: string; isHost: boolean }>>(); // roomCode -> memberId -> { name, isHost }
+  private chillQueueCooldowns = new Map<string, number>(); // socketId -> timestamp
+
+  private parseStrictBoolean(val: any): boolean | null {
+    if (typeof val === 'boolean') return val;
+    if (val === 'true') return true;
+    if (val === 'false') return false;
+    return null;
+  }
 
   private generateGuestName(participantsMap: Map<string, Participant>): string {
     const existingNames = new Set(Array.from(participantsMap.values()).map(p => p.name));
@@ -405,17 +414,21 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const participant = participantsMap?.get(client.id);
 
     if (participant) {
-      participant.micOn = Boolean(data.micOn);
-      participant.videoOn = Boolean(data.videoOn);
-      if (typeof data.isScreenSharing === 'boolean') {
-        participant.isScreenSharing = data.isScreenSharing;
-      }
+      const mic = this.parseStrictBoolean(data?.micOn);
+      if (mic !== null) participant.micOn = mic;
+
+      const video = this.parseStrictBoolean(data?.videoOn);
+      if (video !== null) participant.videoOn = video;
+
+      const screen = this.parseStrictBoolean(data?.isScreenSharing);
+      if (screen !== null) participant.isScreenSharing = screen;
+
       const participantsList = Array.from(participantsMap!.values());
       this.server.to(code).emit('room_participants', participantsList);
     }
   }
 
-  /* --- WebRTC Signaling Relays with Cross-Room Prevention --- */
+  /* --- WebRTC Signaling Relays with Cross-Room Prevention & Payload Validation --- */
 
   @SubscribeMessage('webrtc_offer')
   handleOffer(
@@ -425,16 +438,36 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const senderRoomCode = this.getClientRoomCode(client);
     if (!senderRoomCode) return;
 
+    const targetId = typeof data?.targetSocketId === 'string' ? data.targetSocketId : '';
+    if (!targetId || targetId === client.id) return;
+
     const roomMembers = this.roomParticipants.get(senderRoomCode);
-    if (!roomMembers || !roomMembers.has(data?.targetSocketId)) {
-      this.logger.warn(`WebRTC offer blocked: socket ${client.id} attempted signaling to target ${data?.targetSocketId} outside room ${senderRoomCode}`);
+    if (!roomMembers || !roomMembers.has(targetId)) {
+      this.logger.warn(`WebRTC offer blocked: socket ${client.id} attempted signaling to target ${targetId} outside room ${senderRoomCode}`);
       return;
     }
 
-    this.server.to(data.targetSocketId).emit('webrtc_offer', {
+    if (!data?.offer || typeof data.offer !== 'object') return;
+    if (data.offer.type !== 'offer' || typeof data.offer.sdp !== 'string') {
+      this.logger.warn(`WebRTC offer blocked: invalid SDP structure from socket ${client.id}`);
+      return;
+    }
+    try {
+      const str = JSON.stringify(data.offer);
+      if (Buffer.byteLength(str, 'utf8') > 65536) {
+        this.logger.warn(`WebRTC offer blocked: payload exceeded 64KB UTF-8 byte limit from socket ${client.id}`);
+        return; // 64KB SDP guard
+      }
+    } catch {
+      return;
+    }
+
+    const isScreen = this.parseStrictBoolean(data?.isScreenShare) ?? false;
+
+    this.server.to(targetId).emit('webrtc_offer', {
       senderSocketId: client.id,
       offer: data.offer,
-      isScreenShare: data.isScreenShare,
+      isScreenShare: isScreen,
     });
   }
 
@@ -446,13 +479,31 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const senderRoomCode = this.getClientRoomCode(client);
     if (!senderRoomCode) return;
 
+    const targetId = typeof data?.targetSocketId === 'string' ? data.targetSocketId : '';
+    if (!targetId || targetId === client.id) return;
+
     const roomMembers = this.roomParticipants.get(senderRoomCode);
-    if (!roomMembers || !roomMembers.has(data?.targetSocketId)) {
-      this.logger.warn(`WebRTC answer blocked: socket ${client.id} attempted signaling to target ${data?.targetSocketId} outside room ${senderRoomCode}`);
+    if (!roomMembers || !roomMembers.has(targetId)) {
+      this.logger.warn(`WebRTC answer blocked: socket ${client.id} attempted signaling to target ${targetId} outside room ${senderRoomCode}`);
       return;
     }
 
-    this.server.to(data.targetSocketId).emit('webrtc_answer', {
+    if (!data?.answer || typeof data.answer !== 'object') return;
+    if (data.answer.type !== 'answer' || typeof data.answer.sdp !== 'string') {
+      this.logger.warn(`WebRTC answer blocked: invalid SDP structure from socket ${client.id}`);
+      return;
+    }
+    try {
+      const str = JSON.stringify(data.answer);
+      if (Buffer.byteLength(str, 'utf8') > 65536) {
+        this.logger.warn(`WebRTC answer blocked: payload exceeded 64KB UTF-8 byte limit from socket ${client.id}`);
+        return; // 64KB SDP guard
+      }
+    } catch {
+      return;
+    }
+
+    this.server.to(targetId).emit('webrtc_answer', {
       senderSocketId: client.id,
       answer: data.answer,
     });
@@ -466,12 +517,30 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const senderRoomCode = this.getClientRoomCode(client);
     if (!senderRoomCode) return;
 
+    const targetId = typeof data?.targetSocketId === 'string' ? data.targetSocketId : '';
+    if (!targetId || targetId === client.id) return;
+
     const roomMembers = this.roomParticipants.get(senderRoomCode);
-    if (!roomMembers || !roomMembers.has(data?.targetSocketId)) {
+    if (!roomMembers || !roomMembers.has(targetId)) {
       return;
     }
 
-    this.server.to(data.targetSocketId).emit('webrtc_ice_candidate', {
+    if (!data?.candidate || typeof data.candidate !== 'object') return;
+    if (data.candidate.candidate !== undefined && typeof data.candidate.candidate !== 'string' && data.candidate.candidate !== null) {
+      this.logger.warn(`WebRTC candidate blocked: invalid candidate field from socket ${client.id}`);
+      return;
+    }
+    try {
+      const str = JSON.stringify(data.candidate);
+      if (Buffer.byteLength(str, 'utf8') > 8192) {
+        this.logger.warn(`WebRTC candidate blocked: payload exceeded 8KB UTF-8 byte limit from socket ${client.id}`);
+        return; // 8KB ICE candidate guard
+      }
+    } catch {
+      return;
+    }
+
+    this.server.to(targetId).emit('webrtc_ice_candidate', {
       senderSocketId: client.id,
       candidate: data.candidate,
     });
@@ -487,11 +556,14 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       return;
     }
 
+    const isSharing = this.parseStrictBoolean(data?.isSharing);
+    if (isSharing === null) return;
+
     const state = this.getOrCreateRoomState(code);
     const participantsMap = this.roomParticipants.get(code);
     const presenter = participantsMap?.get(client.id);
 
-    if (data.isSharing) {
+    if (isSharing) {
       state.previousMode = state.mode;
       state.mode = 'SCREEN_SHARE';
       state.activePresenterSocketId = client.id;
@@ -507,7 +579,7 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.broadcastRoomMode(code);
     client.to(code).emit('remote_screen_status', {
       senderSocketId: client.id,
-      isSharing: Boolean(data.isSharing),
+      isSharing,
     });
   }
 
@@ -714,6 +786,13 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { displayName: string; topic: string }
   ) {
+    const now = Date.now();
+    const lastAttempt = this.chillQueueCooldowns.get(client.id) || 0;
+    if (now - lastAttempt < 1000) {
+      return; // 1s flood guard
+    }
+    this.chillQueueCooldowns.set(client.id, now);
+
     const displayName = this.sanitizeString(data?.displayName, 24) || `ChillUser_${client.id.substring(0, 4)}`;
     const topic = this.sanitizeString(data?.topic, 40) || 'random';
 
@@ -787,6 +866,7 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   private leaveAllRooms(client: Socket) {
     this.chillQueue = this.chillQueue.filter(q => q.socketId !== client.id);
+    this.chillQueueCooldowns.delete(client.id);
     for (const [code, participantsMap] of this.roomParticipants.entries()) {
       if (participantsMap.has(client.id)) {
         const participant = participantsMap.get(client.id);

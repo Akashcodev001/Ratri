@@ -487,7 +487,7 @@ export function Room() {
     if (!roomCode) return;
     const code = roomCode.toUpperCase();
     const socket = io(getSocketUrl(), {
-      transports: ["polling", "websocket"],
+      transports: ["websocket", "polling"],
       reconnection: true,
       reconnectionAttempts: 10,
       reconnectionDelay: 1000,

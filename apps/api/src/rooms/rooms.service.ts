@@ -88,7 +88,7 @@ export class RoomsService implements OnModuleInit, OnModuleDestroy {
     if (!safeCode || !RoomsService.ROOM_CODE_REGEX.test(safeCode)) {
       throw new NotFoundException('Room expired or does not exist.');
     }
-    const room = await this.roomModel.findOne({ roomCode: safeCode }).exec();
+    const room = await this.roomModel.findOne({ roomCode: safeCode }).lean().exec();
     if (!room) throw new NotFoundException('Room expired or does not exist.');
     
     const now = new Date();
@@ -101,7 +101,7 @@ export class RoomsService implements OnModuleInit, OnModuleDestroy {
       }
       throw new NotFoundException('Room expired or does not exist.');
     }
-    return room;
+    return room as Room;
   }
 
   async setRoomHost(roomCode: string, hostMemberId: string): Promise<void> {
@@ -120,25 +120,9 @@ export class RoomsService implements OnModuleInit, OnModuleDestroy {
     }
 
     const now = new Date();
-    const existing = await this.roomModel.findOne({ roomCode: safeCode }).exec();
-    
-    if (!existing) {
-      throw new NotFoundException('Room expired or does not exist.');
-    }
-
-    if (existing.status === 'EXPIRED' || existing.status === 'ENDED' || now >= existing.expiresAt) {
-      if (existing.status !== 'EXPIRED' && existing.status !== 'ENDED') {
-        const tombstonePurge = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-        await this.roomModel.updateOne(
-          { roomCode: safeCode, status: { $nin: ['EXPIRED', 'ENDED'] } },
-          { $set: { status: 'EXPIRED', endedAt: now, endedReason: 'DEADLINE_PASSED', purgeAt: tombstonePurge } }
-        ).exec();
-      }
-      throw new NotFoundException('Room expired or does not exist.');
-    }
-
-    // Atomically reactivate and clear emptySince
     const activeExpiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+
+    // Fast-path: Single atomic check-and-activate query for valid active/created/idle rooms
     const updated = await this.roomModel.findOneAndUpdate(
       {
         roomCode: safeCode,
@@ -154,13 +138,30 @@ export class RoomsService implements OnModuleInit, OnModuleDestroy {
           lastActivityAt: now,
         },
       },
-      { new: true }
+      { new: true, lean: true }
     ).exec();
 
-    if (!updated) {
+    if (updated) {
+      return updated as Room;
+    }
+
+    // Fallback: If atomic activation failed, check why (expired, ended, or nonexistent)
+    const existing = await this.roomModel.findOne({ roomCode: safeCode }).lean().exec();
+    if (!existing) {
       throw new NotFoundException('Room expired or does not exist.');
     }
-    return updated;
+
+    if (existing.status === 'EXPIRED' || existing.status === 'ENDED' || now >= existing.expiresAt) {
+      if (existing.status !== 'EXPIRED' && existing.status !== 'ENDED') {
+        const tombstonePurge = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+        await this.roomModel.updateOne(
+          { roomCode: safeCode, status: { $nin: ['EXPIRED', 'ENDED'] } },
+          { $set: { status: 'EXPIRED', endedAt: now, endedReason: 'DEADLINE_PASSED', purgeAt: tombstonePurge } }
+        ).exec();
+      }
+    }
+
+    throw new NotFoundException('Room expired or does not exist.');
   }
 
   async markRoomEmpty(roomCode: string, gracePeriodMsOverride?: number): Promise<void> {
