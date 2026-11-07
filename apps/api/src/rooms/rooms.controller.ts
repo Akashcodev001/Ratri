@@ -122,6 +122,20 @@ export class RoomsController implements OnModuleInit {
     };
   }
 
+  @Get(':code/messages')
+  async getRoomMessages(@Param('code') code: string) {
+    const cleanCode = String(code || '').trim().toUpperCase();
+    if (!cleanCode) {
+      throw new BadRequestException('INVALID_ROOM_CODE');
+    }
+    await this.roomsService.getRoomByCode(cleanCode);
+    const messages = await this.roomsService.getChatHistory(cleanCode, 50);
+    return {
+      roomCode: cleanCode,
+      messages,
+    };
+  }
+
   @Post(':code/join')
   async joinRoom(@Param('code') code: string, @Body() body: JoinRoomDto, @Ip() ip: string) {
     const cleanCode = String(code || '').trim();

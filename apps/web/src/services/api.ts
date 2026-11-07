@@ -172,6 +172,11 @@ export const api = {
     return request(`/rooms/${encodeURIComponent(cleanCode)}`);
   },
 
+  async getMessages(code: string): Promise<{ roomCode: string; messages: any[] }> {
+    const cleanCode = String(code || '').trim().toUpperCase();
+    return request(`/rooms/${encodeURIComponent(cleanCode)}/messages`);
+  },
+
   async joinRoom(code: string, displayName: string, password?: string): Promise<any> {
     const cleanCode = String(code || '').trim().toUpperCase();
     return request(`/rooms/${encodeURIComponent(cleanCode)}/join`, {

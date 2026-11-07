@@ -35,6 +35,7 @@ import {
   Zap,
 } from "lucide-react";
 import { io, Socket } from "socket.io-client";
+import { api } from "../services/api";
 
 declare global {
   interface Window {
@@ -226,7 +227,36 @@ export function Room() {
   const [duration, setDuration] = useState(0);
   
   const [participants, setParticipants] = useState<Participant[]>([]);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>(() => {
+    try {
+      const codeKey = (roomCode || "").toUpperCase();
+      if (typeof window !== "undefined" && codeKey) {
+        const cached = sessionStorage.getItem(`ratri_chat_${codeKey}`);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed)) return parsed;
+        }
+      }
+    } catch (e) {}
+    return [];
+  });
+
+  const mergeMessages = (incoming: ChatMessage[]) => {
+    if (!Array.isArray(incoming) || incoming.length === 0) return;
+    setMessages(prev => {
+      const existingIds = new Set(prev.map(m => m.id));
+      const toAdd = incoming.filter(m => m && m.id && !existingIds.has(m.id));
+      if (toAdd.length === 0) return prev;
+      const combined = [...prev, ...toAdd].sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+      try {
+        const codeKey = (roomCode || "").toUpperCase();
+        if (codeKey) {
+          sessionStorage.setItem(`ratri_chat_${codeKey}`, JSON.stringify(combined.slice(-100)));
+        }
+      } catch (e) {}
+      return combined;
+    });
+  };
   const [inputMsg, setInputMsg] = useState("");
   const [reactions, setReactions] = useState<FloatingReaction[]>([]);
   const [remoteStreamsMap, setRemoteStreamsMap] = useState<Map<string, MediaStream>>(new Map());
@@ -533,6 +563,9 @@ export function Room() {
             sessionStorage.setItem(`ratri_name_${code.toUpperCase()}`, me.name);
           }
         }
+        if (res?.messages && Array.isArray(res.messages)) {
+          mergeMessages(res.messages);
+        }
       });
     };
 
@@ -541,6 +574,19 @@ export function Room() {
         setRoomExpired(true);
       }
     });
+
+    socket.on("chat_history", ({ roomCode: historyRoomCode, messages: historyMessages }: { roomCode: string; messages: ChatMessage[] }) => {
+      if (historyRoomCode?.toUpperCase() !== code.toUpperCase()) return;
+      if (!Array.isArray(historyMessages)) return;
+      mergeMessages(historyMessages);
+    });
+
+    // Hydrate chat messages via REST API endpoint as an instant zero-drop guarantee
+    api.getMessages(code).then(data => {
+      if (data?.messages && Array.isArray(data.messages)) {
+        mergeMessages(data.messages);
+      }
+    }).catch(() => {});
 
     if (socket.connected) {
       emitJoinRoom();
@@ -600,9 +646,24 @@ export function Room() {
       setRemoteVideoActive(hasAnyRemoteVideo);
 
       for (const p of updatedParticipants) {
-        if (p.socketId !== socket.id && !peerConnectionsRef.current.has(p.socketId)) {
-          if (socket.id && socket.id < p.socketId) {
-            safeCreateOffer(p.socketId);
+        if (p.socketId !== socket.id) {
+          if (!peerConnectionsRef.current.has(p.socketId)) {
+            if (socket.id && socket.id < p.socketId) {
+              safeCreateOffer(p.socketId);
+            }
+          } else {
+            // Synchronize remote tracks for existing peers
+            const existingPeer = peerConnectionsRef.current.get(p.socketId);
+            if (existingPeer) {
+              const remoteTracks = existingPeer.getReceivers().map(r => r.track).filter(Boolean);
+              if (remoteTracks.length > 0) {
+                setRemoteStreamsMap(prev => {
+                  const next = new Map(prev);
+                  next.set(p.socketId, new MediaStream(remoteTracks));
+                  return next;
+                });
+              }
+            }
           }
         }
       }
@@ -664,21 +725,15 @@ export function Room() {
       }
     });
 
-    socket.on("chat_history", ({ roomCode: historyRoomCode, messages: historyMessages }: { roomCode: string; messages: ChatMessage[] }) => {
-      if (historyRoomCode?.toUpperCase() !== code.toUpperCase()) return;
-      if (!Array.isArray(historyMessages)) return;
-      setMessages(prev => {
-        const existingIds = new Set(prev.map(m => m.id));
-        const newFromHistory = historyMessages.filter(m => !existingIds.has(m.id));
-        const combined = [...newFromHistory, ...prev];
-        return combined.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
-      });
-    });
-
     socket.on("new_message", (msg: ChatMessage) => {
       setMessages(prev => {
         if (prev.some(m => m.id === msg.id)) return prev;
-        return [...prev, msg];
+        const next = [...prev, msg];
+        try {
+          const codeKey = code.toUpperCase();
+          sessionStorage.setItem(`ratri_chat_${codeKey}`, JSON.stringify(next.slice(-100)));
+        } catch (e) {}
+        return next;
       });
       if (!showChatRef.current) {
         setUnreadCount(prev => prev + 1);
@@ -788,6 +843,15 @@ export function Room() {
         await peer.setRemoteDescription(new RTCSessionDescription(offer));
         await drainIceCandidates(senderSocketId, peer);
 
+        const remoteOfferTracks = peer.getReceivers().map(r => r.track).filter(Boolean);
+        if (remoteOfferTracks.length > 0) {
+          setRemoteStreamsMap(prev => {
+            const next = new Map(prev);
+            next.set(senderSocketId, new MediaStream(remoteOfferTracks));
+            return next;
+          });
+        }
+
         if (mediaStreamRef.current) {
           for (const track of mediaStreamRef.current.getTracks()) {
             const transceivers = peer.getTransceivers();
@@ -825,6 +889,15 @@ export function Room() {
         if (peer && peer.signalingState === "have-local-offer") {
           await peer.setRemoteDescription(new RTCSessionDescription(answer));
           await drainIceCandidates(senderSocketId, peer);
+
+          const remoteAnswerTracks = peer.getReceivers().map(r => r.track).filter(Boolean);
+          if (remoteAnswerTracks.length > 0) {
+            setRemoteStreamsMap(prev => {
+              const next = new Map(prev);
+              next.set(senderSocketId, new MediaStream(remoteAnswerTracks));
+              return next;
+            });
+          }
         }
       } catch (err) {
         console.warn("Handled WebRTC answer state transition", err);

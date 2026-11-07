@@ -98,8 +98,10 @@ export function ParticipantTile({
       {hasLiveVideoTrack && stream ? (
         <video
           ref={(el) => {
-            if (el && stream && el.srcObject !== stream) {
-              el.srcObject = stream;
+            if (el && stream) {
+              if (el.srcObject !== stream) {
+                el.srcObject = stream;
+              }
               el.play().catch(() => {});
             }
             videoRef.current = el;
@@ -107,6 +109,12 @@ export function ParticipantTile({
           autoPlay
           playsInline
           muted={true}
+          onLoadedMetadata={(e) => {
+            e.currentTarget.play().catch(() => {});
+          }}
+          onCanPlay={(e) => {
+            e.currentTarget.play().catch(() => {});
+          }}
           className={`w-full h-full object-cover ${isLocal ? "transform -scale-x-100" : ""}`}
         />
       ) : (

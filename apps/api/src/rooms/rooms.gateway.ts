@@ -376,14 +376,15 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     });
 
     // Send persistent chat history to joining/reconnecting client
+    let history: any[] = [];
     try {
-      const history = await this.roomsService.getChatHistory(code, 50);
+      history = await this.roomsService.getChatHistory(code, 50);
       client.emit('chat_history', { roomCode: code, messages: history });
     } catch (err: any) {
       this.logger.warn(`Failed to load chat history for ${code}: ${err?.message}`);
     }
 
-    return { success: true, participant, participants: participantsList };
+    return { success: true, participant, participants: participantsList, messages: history };
   }
 
   @SubscribeMessage('change_room_mode')
