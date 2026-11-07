@@ -646,24 +646,9 @@ export function Room() {
       setRemoteVideoActive(hasAnyRemoteVideo);
 
       for (const p of updatedParticipants) {
-        if (p.socketId !== socket.id) {
-          if (!peerConnectionsRef.current.has(p.socketId)) {
-            if (socket.id && socket.id < p.socketId) {
-              safeCreateOffer(p.socketId);
-            }
-          } else {
-            // Synchronize remote tracks for existing peers
-            const existingPeer = peerConnectionsRef.current.get(p.socketId);
-            if (existingPeer) {
-              const remoteTracks = existingPeer.getReceivers().map(r => r.track).filter(Boolean);
-              if (remoteTracks.length > 0) {
-                setRemoteStreamsMap(prev => {
-                  const next = new Map(prev);
-                  next.set(p.socketId, new MediaStream(remoteTracks));
-                  return next;
-                });
-              }
-            }
+        if (p.socketId !== socket.id && !peerConnectionsRef.current.has(p.socketId)) {
+          if (socket.id && socket.id < p.socketId) {
+            safeCreateOffer(p.socketId);
           }
         }
       }
@@ -843,15 +828,6 @@ export function Room() {
         await peer.setRemoteDescription(new RTCSessionDescription(offer));
         await drainIceCandidates(senderSocketId, peer);
 
-        const remoteOfferTracks = peer.getReceivers().map(r => r.track).filter(Boolean);
-        if (remoteOfferTracks.length > 0) {
-          setRemoteStreamsMap(prev => {
-            const next = new Map(prev);
-            next.set(senderSocketId, new MediaStream(remoteOfferTracks));
-            return next;
-          });
-        }
-
         if (mediaStreamRef.current) {
           for (const track of mediaStreamRef.current.getTracks()) {
             const transceivers = peer.getTransceivers();
@@ -889,15 +865,6 @@ export function Room() {
         if (peer && peer.signalingState === "have-local-offer") {
           await peer.setRemoteDescription(new RTCSessionDescription(answer));
           await drainIceCandidates(senderSocketId, peer);
-
-          const remoteAnswerTracks = peer.getReceivers().map(r => r.track).filter(Boolean);
-          if (remoteAnswerTracks.length > 0) {
-            setRemoteStreamsMap(prev => {
-              const next = new Map(prev);
-              next.set(senderSocketId, new MediaStream(remoteAnswerTracks));
-              return next;
-            });
-          }
         }
       } catch (err) {
         console.warn("Handled WebRTC answer state transition", err);
@@ -954,6 +921,21 @@ export function Room() {
     const peer = createPeerConnection(targetSocketId);
     try {
       makingOfferMapRef.current.set(targetSocketId, true);
+      if (peer.signalingState !== "stable") {
+        await new Promise<void>((resolve) => {
+          const handler = () => {
+            if (peer.signalingState === "stable" || peer.signalingState === "closed") {
+              peer.removeEventListener("signalingstatechange", handler);
+              resolve();
+            }
+          };
+          peer.addEventListener("signalingstatechange", handler);
+          setTimeout(() => {
+            peer.removeEventListener("signalingstatechange", handler);
+            resolve();
+          }, 1500);
+        });
+      }
       if (peer.signalingState !== "stable") return;
       const offer = await peer.createOffer(options);
       if (peer.signalingState !== "stable") return;
@@ -1028,12 +1010,13 @@ export function Room() {
         setRemoteStreamsMap(prev => {
           const next = new Map(prev);
           const existing = next.get(targetSocketId);
-          if (existing) {
-            const tracks = existing.getTracks().filter(t => t.id !== incomingTrack.id && t.kind !== incomingTrack.kind);
-            tracks.push(incomingTrack);
-            next.set(targetSocketId, new MediaStream(tracks));
-          } else if (event.streams && event.streams[0]) {
+          if (event.streams && event.streams[0]) {
             next.set(targetSocketId, event.streams[0]);
+          } else if (existing) {
+            if (!existing.getTracks().some(t => t.id === incomingTrack.id)) {
+              existing.addTrack(incomingTrack);
+            }
+            next.set(targetSocketId, existing);
           } else {
             next.set(targetSocketId, new MediaStream([incomingTrack]));
           }

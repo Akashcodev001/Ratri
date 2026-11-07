@@ -25,59 +25,53 @@ export function ParticipantTile({
   className = "",
 }: ParticipantTileProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [isVideoPlaying, setIsVideoPlaying] = useState(false);
 
-  const [hasLiveVideoTrack, setHasLiveVideoTrack] = useState(() => {
-    if (!stream || !videoOn) return false;
-    return stream.getVideoTracks().some(t => t.enabled && t.readyState !== "ended");
-  });
+  // Check if stream has an enabled video track that has not ended
+  const hasVideoTrack = Boolean(
+    videoOn &&
+    stream &&
+    stream.getVideoTracks().some(t => t.enabled && t.readyState !== "ended")
+  );
 
   useEffect(() => {
-    const checkTracks = () => {
-      if (!stream || !videoOn) {
-        setHasLiveVideoTrack(false);
-        return;
-      }
-      const hasLive = stream.getVideoTracks().some(t => t.enabled && t.readyState !== "ended");
-      setHasLiveVideoTrack(hasLive);
-      if (videoRef.current && stream && hasLive) {
-        if (videoRef.current.srcObject !== stream) {
-          videoRef.current.srcObject = stream;
-        }
-        videoRef.current.play().catch(() => {});
+    const videoEl = videoRef.current;
+    if (!videoEl) return;
+
+    if (!hasVideoTrack || !stream) {
+      setIsVideoPlaying(false);
+      videoEl.srcObject = null;
+      return;
+    }
+
+    if (videoEl.srcObject !== stream) {
+      videoEl.srcObject = stream;
+    }
+    videoEl.play().catch(() => {});
+
+    const handleReady = () => {
+      if (videoEl.videoWidth > 0) {
+        setIsVideoPlaying(true);
       }
     };
 
-    checkTracks();
+    videoEl.addEventListener("playing", handleReady);
+    videoEl.addEventListener("loadeddata", handleReady);
+    videoEl.addEventListener("timeupdate", handleReady);
 
-    if (!stream) return;
-
-    stream.addEventListener("addtrack", checkTracks);
-    stream.addEventListener("removetrack", checkTracks);
-    stream.getVideoTracks().forEach(t => {
-      t.addEventListener("unmute", checkTracks);
-      t.addEventListener("mute", checkTracks);
-      t.addEventListener("ended", checkTracks);
-    });
+    const videoTracks = stream.getVideoTracks();
+    const handleUnmute = () => {
+      videoEl.play().catch(() => {});
+    };
+    videoTracks.forEach(t => t.addEventListener("unmute", handleUnmute));
 
     return () => {
-      stream.removeEventListener("addtrack", checkTracks);
-      stream.removeEventListener("removetrack", checkTracks);
-      stream.getVideoTracks().forEach(t => {
-        t.removeEventListener("unmute", checkTracks);
-        t.removeEventListener("mute", checkTracks);
-        t.removeEventListener("ended", checkTracks);
-      });
+      videoEl.removeEventListener("playing", handleReady);
+      videoEl.removeEventListener("loadeddata", handleReady);
+      videoEl.removeEventListener("timeupdate", handleReady);
+      videoTracks.forEach(t => t.removeEventListener("unmute", handleUnmute));
     };
-  }, [stream, videoOn]);
-
-  useEffect(() => {
-    if (videoRef.current && stream && hasLiveVideoTrack) {
-      if (videoRef.current.srcObject !== stream) {
-        videoRef.current.srcObject = stream;
-      }
-      videoRef.current.play().catch(() => {});
-    }
-  }, [stream, hasLiveVideoTrack]);
+  }, [stream, hasVideoTrack, videoOn]);
 
   const initials = name
     .split(" ")
@@ -88,24 +82,40 @@ export function ParticipantTile({
 
   return (
     <div
-      className={`relative rounded-xl overflow-hidden bg-[hsl(var(--surface-elevated))] border transition-all duration-200 flex flex-col items-center justify-center select-none shadow-lg ${
+      className={`relative rounded-xl overflow-hidden bg-black border transition-all duration-200 flex flex-col items-center justify-center select-none shadow-lg ${
         isSpeaking
           ? "border-emerald-500 shadow-emerald-500/20 shadow-md ring-2 ring-emerald-500/30"
           : "border-[hsl(var(--border))]"
       } ${className}`}
     >
-      {/* Active Video Stream */}
-      {hasLiveVideoTrack && stream ? (
+      {/* 1. Base Layer: Fallback Avatar Tile (ALWAYS present underneath — never blank white) */}
+      <div className="w-full h-full flex flex-col items-center justify-center p-4 bg-gradient-to-b from-[hsl(var(--surface))] to-[hsl(var(--surface-sunken))] text-center space-y-3">
+        <div className="relative">
+          <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-gradient-to-tr from-[hsl(var(--accent))] to-pink-600 text-white flex items-center justify-center font-bold text-xl sm:text-2xl shadow-md border-2 border-[hsl(var(--border))]">
+            {initials}
+          </div>
+          {isSpeaking && (
+            <span className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow animate-pulse">
+              <Volume2 className="w-3.5 h-3.5" />
+            </span>
+          )}
+        </div>
+        <div className="space-y-0.5">
+          <div className="font-semibold text-sm text-[hsl(var(--text))] flex items-center justify-center gap-1.5">
+            <span>{name}</span>
+            {isLocal && <span className="text-[10px] text-gray-400 font-normal">(You)</span>}
+          </div>
+          <div className="text-[11px] text-[hsl(var(--text-muted))] flex items-center justify-center gap-1">
+            <VideoOff className="w-3 h-3 text-rose-400" />
+            <span>{videoOn ? "Connecting Video..." : "Camera Off"}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* 2. Top Video Layer: Seamlessly overlays avatar once video frames are actively playing */}
+      {hasVideoTrack && stream && (
         <video
-          ref={(el) => {
-            if (el && stream) {
-              if (el.srcObject !== stream) {
-                el.srcObject = stream;
-              }
-              el.play().catch(() => {});
-            }
-            videoRef.current = el;
-          }}
+          ref={videoRef}
           autoPlay
           playsInline
           muted={true}
@@ -115,32 +125,10 @@ export function ParticipantTile({
           onCanPlay={(e) => {
             e.currentTarget.play().catch(() => {});
           }}
-          className={`w-full h-full object-cover ${isLocal ? "transform -scale-x-100" : ""}`}
+          className={`absolute inset-0 w-full h-full object-cover bg-black transition-opacity duration-300 ${
+            isVideoPlaying ? "opacity-100 z-[1]" : "opacity-0 pointer-events-none"
+          } ${isLocal ? "transform -scale-x-100" : ""}`}
         />
-      ) : (
-        /* Camera Off Fallback Avatar Tile */
-        <div className="w-full h-full flex flex-col items-center justify-center p-4 bg-gradient-to-b from-[hsl(var(--surface))] to-[hsl(var(--surface-sunken))] text-center space-y-3">
-          <div className="relative">
-            <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-gradient-to-tr from-[hsl(var(--accent))] to-pink-600 text-white flex items-center justify-center font-bold text-xl sm:text-2xl shadow-md border-2 border-[hsl(var(--border))]">
-              {initials}
-            </div>
-            {isSpeaking && (
-              <span className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow animate-pulse">
-                <Volume2 className="w-3.5 h-3.5" />
-              </span>
-            )}
-          </div>
-          <div className="space-y-0.5">
-            <div className="font-semibold text-sm text-[hsl(var(--text))] flex items-center justify-center gap-1.5">
-              <span>{name}</span>
-              {isLocal && <span className="text-[10px] text-gray-400 font-normal">(You)</span>}
-            </div>
-            <div className="text-[11px] text-[hsl(var(--text-muted))] flex items-center justify-center gap-1">
-              <VideoOff className="w-3 h-3 text-rose-400" />
-              <span>Camera Off</span>
-            </div>
-          </div>
-        </div>
       )}
 
       {/* Top Left Badges: Host & Local */}
