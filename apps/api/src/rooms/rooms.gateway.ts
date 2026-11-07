@@ -160,6 +160,9 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   private getClientRoomCode(client: Socket): string | null {
+    if (!this.isSessionActiveAndValid(client)) {
+      return null;
+    }
     for (const [code, participantsMap] of this.roomParticipants.entries()) {
       if (participantsMap.has(client.id)) {
         return code;
@@ -168,7 +171,29 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     return null;
   }
 
+  private isSessionActiveAndValid(client: Socket): boolean {
+    const user = client.data?.user;
+    if (!user) return true; // Unauthenticated guest actions are governed by room membership
+
+    // 1. Check if token expired during active socket connection
+    if (user.exp && Date.now() >= user.exp * 1000) {
+      this.logger.warn(`Active socket session expired for socket ${client.id} (Member: ${user.mid})`);
+      client.emit('session_expired', { message: 'Session token has expired. Please refresh your session.' });
+      return false;
+    }
+
+    // 2. Check if session was revoked
+    if (user.sid && this.authService.isSessionRevoked(user.sid)) {
+      this.logger.warn(`Revoked session attempt on socket ${client.id} (Session: ${user.sid})`);
+      client.emit('session_revoked', { message: 'Session has been revoked.' });
+      return false;
+    }
+
+    return true;
+  }
+
   private isRoomMember(client: Socket, roomCode: string): boolean {
+    if (!this.isSessionActiveAndValid(client)) return false;
     const code = this.sanitizeString(roomCode, 20).toUpperCase();
     if (!code) return false;
     const participantsMap = this.roomParticipants.get(code);
@@ -176,6 +201,7 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   private isHost(client: Socket, roomCode: string): boolean {
+    if (!this.isSessionActiveAndValid(client)) return false;
     const code = this.sanitizeString(roomCode, 20).toUpperCase();
     if (!code) return false;
     const participantsMap = this.roomParticipants.get(code);
@@ -225,6 +251,18 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const code = this.sanitizeString(rawCode, 20).toUpperCase();
     if (!code) {
       return { success: false, error: 'INVALID_ROOM_CODE' };
+    }
+
+    if (!this.isSessionActiveAndValid(client)) {
+      client.emit('room_error', {
+        code: 'SESSION_EXPIRED_OR_REVOKED',
+        message: 'Your authenticated session has expired or been revoked. Please refresh or rejoin.',
+      });
+      return {
+        success: false,
+        error: 'SESSION_EXPIRED_OR_REVOKED',
+        message: 'Your authenticated session has expired or been revoked.',
+      };
     }
 
     // If socket has verified JWT session from handshake, prioritize verified memberId to prevent spoofing
@@ -459,6 +497,7 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { targetSocketId: string; offer: any; isScreenShare?: boolean }
   ) {
+    if (!this.isSessionActiveAndValid(client)) return;
     if (!this.checkSignalingRateLimit(this.offerRateLimits, client.id, 10)) {
       this.logger.warn(`WebRTC offer rate limit exceeded for socket ${client.id}`);
       return;
@@ -505,6 +544,7 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { targetSocketId: string; answer: any }
   ) {
+    if (!this.isSessionActiveAndValid(client)) return;
     if (!this.checkSignalingRateLimit(this.answerRateLimits, client.id, 10)) {
       this.logger.warn(`WebRTC answer rate limit exceeded for socket ${client.id}`);
       return;
@@ -548,6 +588,7 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { targetSocketId: string; candidate: any }
   ) {
+    if (!this.isSessionActiveAndValid(client)) return;
     if (!this.checkSignalingRateLimit(this.iceRateLimits, client.id, 100)) {
       this.logger.warn(`WebRTC ICE rate limit exceeded for socket ${client.id}`);
       return;
@@ -825,6 +866,14 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { displayName: string; topic: string }
   ) {
+    if (!this.isSessionActiveAndValid(client)) {
+      client.emit('room_error', {
+        code: 'SESSION_EXPIRED_OR_REVOKED',
+        message: 'Your authenticated session has expired or been revoked.',
+      });
+      return;
+    }
+
     const now = Date.now();
     const lastAttempt = this.chillQueueCooldowns.get(client.id) || 0;
     if (now - lastAttempt < 1000) {

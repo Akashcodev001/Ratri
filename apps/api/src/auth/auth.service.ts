@@ -4,7 +4,19 @@ import * as crypto from 'crypto';
 
 @Injectable()
 export class AuthService {
+  private revokedSessionIds = new Set<string>();
+
   constructor(private jwtService: JwtService) {}
+
+  revokeSession(sessionId: string): void {
+    if (sessionId) {
+      this.revokedSessionIds.add(sessionId);
+    }
+  }
+
+  isSessionRevoked(sessionId: string): boolean {
+    return this.revokedSessionIds.has(sessionId);
+  }
 
   async generateGuestSession(roomId: string, memberId: string, _ip?: string | null) {
     const sessionId = crypto.randomUUID();
@@ -17,7 +29,6 @@ export class AuthService {
     const accessToken = this.jwtService.sign(payload);
     const refreshToken = crypto.randomBytes(32).toString('hex');
     
-    // In a real implementation, store this in guest_sessions collection in Mongo
     return {
       accessToken,
       refreshToken,
@@ -25,9 +36,13 @@ export class AuthService {
     };
   }
 
-  async verifyToken(token: string): Promise<{ sid: string; rid: string; mid: string } | null> {
+  async verifyToken(token: string): Promise<{ sid: string; rid: string; mid: string; exp?: number } | null> {
     try {
-      return this.jwtService.verify(token);
+      const payload = this.jwtService.verify(token) as { sid: string; rid: string; mid: string; exp?: number };
+      if (payload?.sid && this.isSessionRevoked(payload.sid)) {
+        return null;
+      }
+      return payload;
     } catch {
       return null;
     }

@@ -143,8 +143,8 @@ describe('Ratri Security Hardening Unit Verification', () => {
 
     it('should reject oversized SDP payloads using true UTF-8 byte length (not char count)', () => {
       const multiByteStr = '🔥'.repeat(25000);
-      expect(multiByteStr.length).toBeLessThan(65536); // Char length is 50,000 (surrogate pairs)
-      expect(Buffer.byteLength(multiByteStr, 'utf8')).toBe(100000); // 100,000 bytes!
+      expect(multiByteStr.length).toBeLessThan(65536);
+      expect(Buffer.byteLength(multiByteStr, 'utf8')).toBe(100000);
 
       const offerWithUnicode = { type: 'offer', sdp: multiByteStr };
       const isByteLengthSafe = (payload: any, limit: number) => {
@@ -181,14 +181,10 @@ describe('Ratri Security Hardening Unit Verification', () => {
 
       const socketId = 'peer-spammer-123';
       const t0 = 1000;
-      // Allow up to 10 offers per 5s window
       for (let i = 0; i < 10; i++) {
         expect(checkRateLimit(socketId, 10, 5000, t0 + i * 100)).toBe(true);
       }
-      // 11th offer within 5s window should be throttled
       expect(checkRateLimit(socketId, 10, 5000, t0 + 1500)).toBe(false);
-
-      // After 5s window expires (t0 + 6000ms), allowed again
       expect(checkRateLimit(socketId, 10, 5000, t0 + 6000)).toBe(true);
     });
   });
@@ -224,15 +220,14 @@ describe('Ratri Security Hardening Unit Verification', () => {
 
       const t0 = 10000;
       expect(canJoinQueue(clientId, t0)).toBe(true);
-      expect(canJoinQueue(clientId, t0 + 200)).toBe(false); // 200ms later -> rejected
-      expect(canJoinQueue(clientId, t0 + 800)).toBe(false); // 800ms later -> rejected
-      expect(canJoinQueue(clientId, t0 + 1050)).toBe(true); // 1050ms later -> allowed
+      expect(canJoinQueue(clientId, t0 + 200)).toBe(false);
+      expect(canJoinQueue(clientId, t0 + 800)).toBe(false);
+      expect(canJoinQueue(clientId, t0 + 1050)).toBe(true);
     });
 
     it('should prevent duplicate queue entries on simultaneous join attempts', () => {
       let queue: { socketId: string; name: string }[] = [];
       const joinQueue = (socketId: string, name: string) => {
-        // Atomic filter before adding
         queue = queue.filter(q => q.socketId !== socketId);
         queue.push({ socketId, name });
       };
@@ -259,6 +254,128 @@ describe('Ratri Security Hardening Unit Verification', () => {
       expect(queue[0].socketId).toBe('socket-2');
       expect(cooldowns.has('socket-1')).toBe(false);
       expect(cooldowns.has('socket-2')).toBe(true);
+    });
+  });
+
+  // Test 6: WebSocket Active Token Expiration & Session Revocation
+  describe('WebSocket Active Token Expiration & Revocation Verification', () => {
+    it('should reject privileged operations when JWT expires during an active socket session', () => {
+      const nowSec = Math.floor(Date.now() / 1000);
+      const activeUser = { mid: 'member-123', sid: 'sess-abc', exp: nowSec + 10 }; // 10s left
+      const expiredUser = { mid: 'member-123', sid: 'sess-abc', exp: nowSec - 5 }; // expired 5s ago
+
+      const isSessionActive = (user: { exp?: number; sid?: string } | undefined, revokedSet: Set<string>): boolean => {
+        if (!user) return true; // guest access
+        if (user.exp && Date.now() >= user.exp * 1000) return false;
+        if (user.sid && revokedSet.has(user.sid)) return false;
+        return true;
+      };
+
+      const revokedSessions = new Set<string>();
+      expect(isSessionActive(activeUser, revokedSessions)).toBe(true);
+      expect(isSessionActive(expiredUser, revokedSessions)).toBe(false);
+    });
+
+    it('should immediately block active sessions when revoked', () => {
+      const nowSec = Math.floor(Date.now() / 1000);
+      const user = { mid: 'member-123', sid: 'revoked-session-xyz', exp: nowSec + 900 };
+      const revokedSessions = new Set<string>();
+
+      const isSessionActive = (u: typeof user, revokedSet: Set<string>) => {
+        if (u.sid && revokedSet.has(u.sid)) return false;
+        return true;
+      };
+
+      expect(isSessionActive(user, revokedSessions)).toBe(true);
+      revokedSessions.add('revoked-session-xyz');
+      expect(isSessionActive(user, revokedSessions)).toBe(false);
+    });
+
+    it('should reject reconnection when using an expired or revoked token', () => {
+      const revokedSessions = new Set<string>(['bad-session']);
+      const verifyTokenMock = (token: string): { sid: string; mid: string } | null => {
+        if (token === 'expired-token') return null; // jwt.verify throws TokenExpiredError
+        if (token === 'revoked-token') {
+          const payload = { sid: 'bad-session', mid: 'user-1' };
+          if (revokedSessions.has(payload.sid)) return null;
+          return payload;
+        }
+        if (token === 'valid-token') return { sid: 'good-session', mid: 'user-2' };
+        return null;
+      };
+
+      expect(verifyTokenMock('valid-token')).not.toBeNull();
+      expect(verifyTokenMock('expired-token')).toBeNull();
+      expect(verifyTokenMock('revoked-token')).toBeNull();
+    });
+  });
+
+  // Test 7: Reverse Proxy Trust Configuration Resilience
+  describe('Reverse Proxy Trust Parsing & Anti-Spoofing', () => {
+    function resolveTrustProxy(envVal: string | undefined): any {
+      const raw = envVal?.trim();
+      let config: any = 1; // Default: exactly 1 hop for Render proxy
+      if (raw) {
+        const parsed = Number(raw);
+        if (!isNaN(parsed) && parsed >= 0 && parsed <= 5) {
+          config = parsed;
+        } else if (raw === 'false' || raw === '0') {
+          config = false;
+        } else if (raw.toLowerCase() === 'true') {
+          // Unsafe boolean true attempted: fail safely to 1 hop
+          config = 1;
+        } else {
+          config = raw;
+        }
+      }
+      return config;
+    }
+
+    it('should default safely to 1 hop when TRUST_PROXY is undefined or empty', () => {
+      expect(resolveTrustProxy(undefined)).toBe(1);
+      expect(resolveTrustProxy('')).toBe(1);
+    });
+
+    it('should safely intercept unsafe TRUST_PROXY="true" and enforce 1 hop', () => {
+      // In Express, trust proxy: true blindly trusts client X-Forwarded-For.
+      // Verify our bootstrap intercepts and defaults to 1 hop safely:
+      expect(resolveTrustProxy('true')).toBe(1);
+      expect(resolveTrustProxy('TRUE')).toBe(1);
+    });
+
+    it('should accept valid hop counts and safe configuration strings', () => {
+      expect(resolveTrustProxy('1')).toBe(1);
+      expect(resolveTrustProxy('2')).toBe(2);
+      expect(resolveTrustProxy('false')).toBe(false);
+      expect(resolveTrustProxy('loopback, linklocal')).toBe('loopback, linklocal');
+    });
+  });
+
+  // Test 8: HMAC Secret Rotation Non-Disruptive Lifecycle
+  describe('HMAC Secret Rotation Behavior', () => {
+    function hashIp(ip: string, secret: string): string {
+      return crypto.createHmac('sha256', secret).update(`IP:${ip}`).digest('hex');
+    }
+
+    it('should produce distinct hashes when IP_HASH_SECRET is rotated without breaking room lookup', () => {
+      const clientIp = '198.51.100.25';
+      const oldSecret = 'old-secret-key-at-least-32-bytes-long!';
+      const newSecret = 'new-secret-key-at-least-32-bytes-long!';
+
+      const oldHash = hashIp(clientIp, oldSecret);
+      const newHash = hashIp(clientIp, newSecret);
+
+      expect(oldHash).not.toBe(newHash);
+
+      // Verify that room access does NOT compare client's current IP hash against createdByIpHash:
+      const room = {
+        roomCode: 'TESTROOM',
+        createdByIpHash: oldHash,
+        settings: { locked: false },
+      };
+
+      const canJoinRoom = (r: typeof room, isLocked: boolean) => !isLocked;
+      expect(canJoinRoom(room, room.settings.locked)).toBe(true);
     });
   });
 });

@@ -265,6 +265,7 @@ export function Room() {
   const makingOfferMapRef = useRef<Map<string, boolean>>(new Map());
   const ignoreOfferMapRef = useRef<Map<string, boolean>>(new Map());
   const iceCandidatesQueueRef = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
+  const iceRestartCountsRef = useRef<Map<string, number>>(new Map());
 
   useEffect(() => {
     showChatRef.current = showChat;
@@ -403,6 +404,23 @@ export function Room() {
       const firstScriptTag = document.getElementsByTagName('script')[0];
       firstScriptTag?.parentNode?.insertBefore(tag, firstScriptTag);
     }
+  }, []);
+
+  // User interaction audio autoplay unlocker
+  useEffect(() => {
+    const unlockAudio = () => {
+      document.querySelectorAll("audio").forEach(el => {
+        if (el.paused) el.play().catch(() => {});
+      });
+    };
+    window.addEventListener("click", unlockAudio);
+    window.addEventListener("keydown", unlockAudio);
+    window.addEventListener("touchstart", unlockAudio);
+    return () => {
+      window.removeEventListener("click", unlockAudio);
+      window.removeEventListener("keydown", unlockAudio);
+      window.removeEventListener("touchstart", unlockAudio);
+    };
   }, []);
 
   // Initialize YouTube YT.Player Instance safely
@@ -632,6 +650,7 @@ export function Room() {
         makingOfferMapRef.current.delete(targetId);
         ignoreOfferMapRef.current.delete(targetId);
         iceCandidatesQueueRef.current.delete(targetId);
+        iceRestartCountsRef.current.delete(targetId);
         setRemoteStreamsMap(prev => {
           const next = new Map(prev);
           next.delete(targetId);
@@ -866,20 +885,41 @@ export function Room() {
     peerConnectionsRef.current.set(targetSocketId, peer);
 
     peer.oniceconnectionstatechange = () => {
-      if (peer.iceConnectionState === "failed") {
-        console.warn(`ICE connection to ${targetSocketId} failed. Triggering ICE restart...`);
-        if (socketRef.current?.id && socketRef.current.id < targetSocketId) {
-          safeCreateOffer(targetSocketId, { iceRestart: true });
+      if (peer.iceConnectionState === "connected") {
+        iceRestartCountsRef.current.delete(targetSocketId);
+      } else if (peer.iceConnectionState === "failed") {
+        const restartCount = iceRestartCountsRef.current.get(targetSocketId) || 0;
+        if (restartCount < 2) {
+          iceRestartCountsRef.current.set(targetSocketId, restartCount + 1);
+          console.warn(`ICE connection to ${targetSocketId} failed. Triggering ICE restart (attempt ${restartCount + 1}/2)...`);
+          if (socketRef.current?.id && socketRef.current.id < targetSocketId) {
+            safeCreateOffer(targetSocketId, { iceRestart: true });
+          }
+        } else {
+          console.warn(`Direct P2P connection to ${targetSocketId} failed after 2 ICE restarts. Symmetric NAT/firewall blocks direct connection; TURN relay required.`);
         }
       }
     };
 
-    // Add bidirectional transceivers upfront for stable audio & video media sections
+    // Initialize audio and video tracks/transceivers
+    const localStream = mediaStreamRef.current;
+    const localAudioTrack = localStream?.getAudioTracks()[0];
+    const localVideoTrack = localStream?.getVideoTracks()[0];
+
     try {
-      peer.addTransceiver("audio", { direction: "sendrecv" });
-      peer.addTransceiver("video", { direction: "sendrecv" });
+      if (localAudioTrack && localStream) {
+        peer.addTrack(localAudioTrack, localStream);
+      } else {
+        peer.addTransceiver("audio", { direction: "sendrecv" });
+      }
+
+      if (localVideoTrack && localStream) {
+        peer.addTrack(localVideoTrack, localStream);
+      } else {
+        peer.addTransceiver("video", { direction: "sendrecv" });
+      }
     } catch (e) {
-      console.warn("Transceiver initialization fallback", e);
+      console.warn("Transceiver/Track initialization fallback", e);
     }
 
     peer.onicecandidate = (event) => {
@@ -919,25 +959,6 @@ export function Room() {
         setRemoteVideoActive(true);
       }
     };
-
-    if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach(track => {
-        const transceivers = peer.getTransceivers();
-        const matchingTransceiver = transceivers.find(t => t.sender && (t.sender.track?.kind === track.kind || (!t.sender.track && t.receiver?.track?.kind === track.kind)));
-        if (matchingTransceiver) {
-          try { matchingTransceiver.direction = "sendrecv"; } catch (e) {}
-          matchingTransceiver.sender.replaceTrack(track).catch(() => {});
-        } else {
-          const senders = peer.getSenders();
-          const matchingSender = senders.find(s => s.track?.kind === track.kind || !s.track);
-          if (matchingSender) {
-            matchingSender.replaceTrack(track).catch(() => {});
-          } else {
-            try { peer.addTrack(track, mediaStreamRef.current!); } catch (e) {}
-          }
-        }
-      });
-    }
 
     return peer;
   };

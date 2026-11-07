@@ -3,16 +3,69 @@ import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import helmet from 'helmet';
+import * as net from 'net';
+
+// Validates explicit CIDR notation (e.g. 10.0.0.0/8, 192.168.1.0/24), single IPs, or standard named subnets
+const isValidCidrOrSubnet = (val: string): boolean => {
+  const standardSubnets = ['loopback', 'linklocal', 'uniquelocal'];
+  const parts = val.split(',').map((p) => p.trim());
+  return parts.length > 0 && parts.every((part) => {
+    if (standardSubnets.includes(part.toLowerCase())) return true;
+    if (net.isIP(part) !== 0) return true;
+    const cidrMatch = part.match(/^([^/]+)\/(\d{1,3})$/);
+    if (!cidrMatch) return false;
+    const ip = cidrMatch[1];
+    const prefix = parseInt(cidrMatch[2], 10);
+    const ipVersion = net.isIP(ip);
+    if (ipVersion === 4 && prefix >= 0 && prefix <= 32) return true;
+    if (ipVersion === 6 && prefix >= 0 && prefix <= 128) return true;
+    return false;
+  });
+};
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   
-  // Configure trusted reverse proxy hops (e.g. Render / Cloudflare / Vercel Edge)
-  // Trusting 1 proxy hop ensures req.ip resolves to the real client IP provided by Render's proxy
-  // without blindly trusting spoofed X-Forwarded-For headers injected by untrusted clients.
+  // Configure trusted reverse proxy hops (Render ingress topology: exactly 1 hop)
+  // Rejects arbitrary strings, negative numbers, out-of-range integers (>5), and unsafe boolean 'true'.
+  // Validates explicit CIDR notation or defaults safely to 1 hop.
+  const rawTrustProxy = process.env.TRUST_PROXY?.trim();
+  let trustProxyConfig: any = 1; // Default: exactly 1 hop for Render's reverse proxy
+
+  if (rawTrustProxy !== undefined && rawTrustProxy !== '') {
+    const isInteger = /^\d+$/.test(rawTrustProxy);
+    if (isInteger) {
+      const parsedHop = parseInt(rawTrustProxy, 10);
+      if (parsedHop >= 0 && parsedHop <= 5) {
+        trustProxyConfig = parsedHop;
+      } else {
+        Logger.warn(
+          `TRUST_PROXY="${rawTrustProxy}" is outside safe hop range (0-5). Defaulting safely to 1 trusted hop for Render proxy.`,
+          'Bootstrap'
+        );
+        trustProxyConfig = 1;
+      }
+    } else if (rawTrustProxy.toLowerCase() === 'false' || rawTrustProxy === '0') {
+      trustProxyConfig = false;
+    } else if (rawTrustProxy.toLowerCase() === 'true') {
+      Logger.warn(
+        'TRUST_PROXY="true" is unsafe and permits client IP spoofing. Defaulting safely to 1 trusted hop for Render proxy.',
+        'Bootstrap'
+      );
+      trustProxyConfig = 1;
+    } else if (isValidCidrOrSubnet(rawTrustProxy)) {
+      trustProxyConfig = rawTrustProxy;
+    } else {
+      Logger.warn(
+        `TRUST_PROXY="${rawTrustProxy}" contains invalid IP/CIDR syntax. Arbitrary strings rejected. Defaulting safely to 1 trusted hop.`,
+        'Bootstrap'
+      );
+      trustProxyConfig = 1;
+    }
+  }
+
   const httpAdapter = app.getHttpAdapter();
   if (httpAdapter && typeof (httpAdapter.getInstance() as any)?.set === 'function') {
-    const trustProxyConfig = process.env.TRUST_PROXY ? Number(process.env.TRUST_PROXY) || process.env.TRUST_PROXY : 1;
     (httpAdapter.getInstance() as any).set('trust proxy', trustProxyConfig);
   }
 

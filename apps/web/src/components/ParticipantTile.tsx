@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Mic, MicOff, VideoOff, Shield, Volume2 } from "lucide-react";
 
 interface ParticipantTileProps {
@@ -26,27 +26,58 @@ export function ParticipantTile({
 }: ParticipantTileProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
-  useEffect(() => {
-    if (!videoRef.current || !stream) return;
-    videoRef.current.srcObject = stream;
-    videoRef.current.play().catch(() => {});
+  const [hasLiveVideoTrack, setHasLiveVideoTrack] = useState(() => {
+    if (!stream || !videoOn) return false;
+    return stream.getVideoTracks().some(t => t.enabled && t.readyState !== "ended");
+  });
 
-    const handleTrackChange = () => {
-      if (videoRef.current && stream) {
-        videoRef.current.srcObject = stream;
+  useEffect(() => {
+    const checkTracks = () => {
+      if (!stream || !videoOn) {
+        setHasLiveVideoTrack(false);
+        return;
+      }
+      const hasLive = stream.getVideoTracks().some(t => t.enabled && t.readyState !== "ended");
+      setHasLiveVideoTrack(hasLive);
+      if (videoRef.current && stream && hasLive) {
+        if (videoRef.current.srcObject !== stream) {
+          videoRef.current.srcObject = stream;
+        }
         videoRef.current.play().catch(() => {});
       }
     };
 
-    stream.addEventListener("addtrack", handleTrackChange);
-    stream.addEventListener("removetrack", handleTrackChange);
-    stream.getTracks().forEach(t => t.addEventListener("unmute", handleTrackChange));
+    checkTracks();
+
+    if (!stream) return;
+
+    stream.addEventListener("addtrack", checkTracks);
+    stream.addEventListener("removetrack", checkTracks);
+    stream.getVideoTracks().forEach(t => {
+      t.addEventListener("unmute", checkTracks);
+      t.addEventListener("mute", checkTracks);
+      t.addEventListener("ended", checkTracks);
+    });
+
     return () => {
-      stream.removeEventListener("addtrack", handleTrackChange);
-      stream.removeEventListener("removetrack", handleTrackChange);
-      stream.getTracks().forEach(t => t.removeEventListener("unmute", handleTrackChange));
+      stream.removeEventListener("addtrack", checkTracks);
+      stream.removeEventListener("removetrack", checkTracks);
+      stream.getVideoTracks().forEach(t => {
+        t.removeEventListener("unmute", checkTracks);
+        t.removeEventListener("mute", checkTracks);
+        t.removeEventListener("ended", checkTracks);
+      });
     };
   }, [stream, videoOn]);
+
+  useEffect(() => {
+    if (videoRef.current && stream && hasLiveVideoTrack) {
+      if (videoRef.current.srcObject !== stream) {
+        videoRef.current.srcObject = stream;
+      }
+      videoRef.current.play().catch(() => {});
+    }
+  }, [stream, hasLiveVideoTrack]);
 
   const initials = name
     .split(" ")
@@ -64,7 +95,7 @@ export function ParticipantTile({
       } ${className}`}
     >
       {/* Active Video Stream */}
-      {videoOn && stream ? (
+      {hasLiveVideoTrack && stream ? (
         <video
           ref={(el) => {
             if (el && stream && el.srcObject !== stream) {
@@ -75,7 +106,7 @@ export function ParticipantTile({
           }}
           autoPlay
           playsInline
-          muted={isLocal}
+          muted={true}
           className={`w-full h-full object-cover ${isLocal ? "transform -scale-x-100" : ""}`}
         />
       ) : (
