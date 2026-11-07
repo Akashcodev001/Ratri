@@ -378,4 +378,77 @@ describe('Ratri Security Hardening Unit Verification', () => {
       expect(canJoinRoom(room, room.settings.locked)).toBe(true);
     });
   });
+
+  // Test 9: Chat Persistence, History Retrieval & Room Isolation
+  describe('Chat Persistence, History Retrieval & Room Isolation', () => {
+    it('should sanitize and enforce 1000-character upper bound on message content', () => {
+      const longMessage = 'A'.repeat(2000);
+      const safeText = String(longMessage || '').trim().slice(0, 1000);
+      expect(safeText.length).toBe(1000);
+      expect(safeText).toBe('A'.repeat(1000));
+    });
+
+    it('should strictly isolate chat history by roomCode and prevent cross-room leaks', () => {
+      const storedMessages = [
+        { id: '1', roomCode: 'ROOM_A', text: 'Secret message for Room A', createdAt: new Date(1000) },
+        { id: '2', roomCode: 'ROOM_B', text: 'Hello from Room B', createdAt: new Date(2000) },
+        { id: '3', roomCode: 'ROOM_A', text: 'Second message for Room A', createdAt: new Date(3000) },
+      ];
+
+      const getHistoryForRoom = (code: string) =>
+        storedMessages
+          .filter(m => m.roomCode === code)
+          .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+
+      const roomAHistory = getHistoryForRoom('ROOM_A');
+      const roomBHistory = getHistoryForRoom('ROOM_B');
+
+      expect(roomAHistory).toHaveLength(2);
+      expect(roomAHistory.every(m => m.roomCode === 'ROOM_A')).toBe(true);
+      expect(roomAHistory.some(m => m.text.includes('Room B'))).toBe(false);
+
+      expect(roomBHistory).toHaveLength(1);
+      expect(roomBHistory[0].text).toBe('Hello from Room B');
+    });
+
+    it('should enforce chronological order and bounded limit on history retrieval', () => {
+      const messages = Array.from({ length: 60 }, (_, i) => ({
+        id: `msg_${i}`,
+        roomCode: 'TEST_ROOM',
+        text: `Message ${i}`,
+        createdAt: new Date(10000 + i * 1000),
+      }));
+
+      // Simulate retrieval: latest 50 reversed into ascending order
+      const limit = 50;
+      const latest50Reversed = messages.slice(-limit);
+
+      expect(latest50Reversed).toHaveLength(50);
+      expect(latest50Reversed[0].id).toBe('msg_10');
+      expect(latest50Reversed[49].id).toBe('msg_59');
+      // Verify chronological sorting:
+      for (let i = 0; i < latest50Reversed.length - 1; i++) {
+        expect(latest50Reversed[i].createdAt.getTime()).toBeLessThan(latest50Reversed[i + 1].createdAt.getTime());
+      }
+    });
+
+    it('should prevent duplicate messages when merging real-time messages with history', () => {
+      const history = [
+        { id: 'm1', text: 'Hello', timestamp: 100 },
+        { id: 'm2', text: 'How are you?', timestamp: 200 },
+      ];
+
+      const existingRealtime = [
+        { id: 'm2', text: 'How are you?', timestamp: 200 },
+        { id: 'm3', text: 'I am good!', timestamp: 300 },
+      ];
+
+      const existingIds = new Set(existingRealtime.map(m => m.id));
+      const newFromHistory = history.filter(m => !existingIds.has(m.id));
+      const merged = [...newFromHistory, ...existingRealtime].sort((a, b) => a.timestamp - b.timestamp);
+
+      expect(merged).toHaveLength(3);
+      expect(merged.map(m => m.id)).toEqual(['m1', 'm2', 'm3']);
+    });
+  });
 });

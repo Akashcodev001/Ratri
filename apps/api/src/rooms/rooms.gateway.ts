@@ -375,6 +375,14 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       activeGame: state.gameSession,
     });
 
+    // Send persistent chat history to joining/reconnecting client
+    try {
+      const history = await this.roomsService.getChatHistory(code, 50);
+      client.emit('chat_history', { roomCode: code, messages: history });
+    } catch (err: any) {
+      this.logger.warn(`Failed to load chat history for ${code}: ${err?.message}`);
+    }
+
     return { success: true, participant, participants: participantsList };
   }
 
@@ -436,7 +444,7 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   @SubscribeMessage('send_message')
-  handleSendMessage(
+  async handleSendMessage(
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { roomCode: string; text: string }
   ) {
@@ -450,16 +458,47 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     const participantsMap = this.roomParticipants.get(code);
     const sender = participantsMap?.get(client.id);
+    const memberId = this.clientMemberIds.get(client.id) || client.id;
+    const senderName = sender ? sender.name : 'Guest';
 
-    const messagePayload = {
-      id: Date.now().toString(),
-      sender: sender ? sender.name : 'Guest',
-      senderId: client.id,
-      text: sanitizedText,
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    };
+    let messagePayload: { id: string; sender: string; senderId?: string; text: string; time: string; timestamp: number };
+    try {
+      messagePayload = await this.roomsService.saveMessage({
+        roomCode: code,
+        senderMemberId: memberId,
+        senderName,
+        senderId: client.id,
+        text: sanitizedText,
+      });
+    } catch (err: any) {
+      this.logger.error(`Failed to persist message for room ${code}: ${err?.message}`);
+      const now = new Date();
+      messagePayload = {
+        id: Date.now().toString(),
+        sender: senderName,
+        senderId: client.id,
+        text: sanitizedText,
+        time: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        timestamp: now.getTime(),
+      };
+    }
 
     this.server.to(code).emit('new_message', messagePayload);
+  }
+
+  @SubscribeMessage('get_chat_history')
+  async handleGetChatHistory(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { roomCode: string; limit?: number }
+  ) {
+    const code = this.sanitizeString(data?.roomCode, 20).toUpperCase();
+    if (!this.isRoomMember(client, code)) {
+      return { success: false, error: 'UNAUTHORIZED_OR_NOT_MEMBER' };
+    }
+
+    const limit = typeof data?.limit === 'number' ? data.limit : 50;
+    const messages = await this.roomsService.getChatHistory(code, limit);
+    return { success: true, roomCode: code, messages };
   }
 
   @SubscribeMessage('update_media_state')

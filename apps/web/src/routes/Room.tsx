@@ -49,6 +49,7 @@ interface ChatMessage {
   senderId?: string;
   text: string;
   time: string;
+  timestamp?: number;
   system?: boolean;
 }
 
@@ -663,8 +664,22 @@ export function Room() {
       }
     });
 
+    socket.on("chat_history", ({ roomCode: historyRoomCode, messages: historyMessages }: { roomCode: string; messages: ChatMessage[] }) => {
+      if (historyRoomCode?.toUpperCase() !== code.toUpperCase()) return;
+      if (!Array.isArray(historyMessages)) return;
+      setMessages(prev => {
+        const existingIds = new Set(prev.map(m => m.id));
+        const newFromHistory = historyMessages.filter(m => !existingIds.has(m.id));
+        const combined = [...newFromHistory, ...prev];
+        return combined.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+      });
+    });
+
     socket.on("new_message", (msg: ChatMessage) => {
-      setMessages(prev => [...prev, msg]);
+      setMessages(prev => {
+        if (prev.some(m => m.id === msg.id)) return prev;
+        return [...prev, msg];
+      });
       if (!showChatRef.current) {
         setUnreadCount(prev => prev + 1);
         if (msg.senderId !== socket.id && !msg.system) {
@@ -857,6 +872,8 @@ export function Room() {
       stopMediaStream();
       stopScreenShare();
       closeAllPeers();
+      setMessages([]);
+      setUnreadCount(0);
     };
   }, [roomCode]);
 

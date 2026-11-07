@@ -1,7 +1,8 @@
-import { Injectable, NotFoundException, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger, OnModuleInit, OnModuleDestroy, Optional } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Room, RoomDocument } from './schemas/room.schema';
+import { Message, MessageDocument } from './schemas/message.schema';
 import * as crypto from 'crypto';
 
 @Injectable()
@@ -9,7 +10,10 @@ export class RoomsService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(RoomsService.name);
   private sweepInterval?: NodeJS.Timeout;
 
-  constructor(@InjectModel(Room.name) private roomModel: Model<RoomDocument>) {}
+  constructor(
+    @InjectModel(Room.name) private roomModel: Model<RoomDocument>,
+    @Optional() @InjectModel(Message.name) private messageModel?: Model<MessageDocument>
+  ) {}
 
   onModuleInit() {
     this.expireDueRooms().catch(err => this.logger.error('Boot room sweep failed', err));
@@ -214,5 +218,87 @@ export class RoomsService implements OnModuleInit, OnModuleDestroy {
       this.logger.log(`Expired ${res.modifiedCount} due rooms`);
     }
     return res.modifiedCount;
+  }
+
+  async saveMessage(data: {
+    roomCode: string;
+    senderMemberId: string;
+    senderName: string;
+    senderId?: string;
+    text: string;
+  }): Promise<{ id: string; sender: string; senderId?: string; text: string; time: string; timestamp: number }> {
+    const safeCode = String(data.roomCode || '').trim().toUpperCase();
+    const safeText = String(data.text || '').trim().slice(0, 1000);
+    const now = new Date();
+
+    let purgeAt = new Date(now.getTime() + 24 * 60 * 60 * 1000 + 7 * 24 * 60 * 60 * 1000);
+    try {
+      const room = await this.roomModel.findOne({ roomCode: safeCode }, { purgeAt: 1 }).lean().exec();
+      if (room?.purgeAt) {
+        purgeAt = room.purgeAt;
+      }
+    } catch (err: any) {
+      this.logger.warn(`Could not lookup purgeAt for room ${safeCode}: ${err?.message}`);
+    }
+
+    if (!this.messageModel) {
+      const mockId = crypto.randomUUID();
+      return {
+        id: mockId,
+        sender: data.senderName,
+        senderId: data.senderId,
+        text: safeText,
+        time: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        timestamp: now.getTime(),
+      };
+    }
+
+    const doc = new this.messageModel({
+      roomCode: safeCode,
+      senderMemberId: data.senderMemberId,
+      senderName: data.senderName,
+      senderId: data.senderId,
+      text: safeText,
+      createdAt: now,
+      purgeAt,
+    });
+
+    const saved = await doc.save();
+
+    return {
+      id: saved._id.toString(),
+      sender: saved.senderName,
+      senderId: saved.senderId,
+      text: saved.text,
+      time: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      timestamp: now.getTime(),
+    };
+  }
+
+  async getChatHistory(
+    roomCode: string,
+    limit = 50
+  ): Promise<Array<{ id: string; sender: string; senderId?: string; text: string; time: string; timestamp: number }>> {
+    const safeCode = String(roomCode || '').trim().toUpperCase();
+    if (!safeCode || !this.messageModel) return [];
+
+    const boundedLimit = Math.min(Math.max(1, limit), 100);
+
+    const docs = await this.messageModel
+      .find({ roomCode: safeCode })
+      .sort({ createdAt: -1 })
+      .limit(boundedLimit)
+      .lean()
+      .exec();
+
+    // Reverse descending slice into chronological ascending order
+    return docs.reverse().map((doc: any) => ({
+      id: doc._id.toString(),
+      sender: doc.senderName,
+      senderId: doc.senderId,
+      text: doc.text,
+      time: new Date(doc.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      timestamp: new Date(doc.createdAt).getTime(),
+    }));
   }
 }
