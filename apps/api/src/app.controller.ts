@@ -10,6 +10,15 @@ export class AppController {
     return this.appService.getHello();
   }
 
+  @Get('health')
+  getHealth(): { status: string; uptime: number; timestamp: string } {
+    return {
+      status: 'ok',
+      uptime: process.uptime(),
+      timestamp: new Date().toISOString(),
+    };
+  }
+
   @Get('robots.txt')
   @Header('Content-Type', 'text/plain')
   getRobots(): string {

@@ -42,8 +42,8 @@ export class Room {
   @Prop()
   endedReason?: string;
 
-  @Prop({ required: true })
-  createdByIpHash: string;
+  @Prop({ required: false, default: null })
+  createdByIpHash?: string;
 
   @Prop()
   emptySince?: Date;

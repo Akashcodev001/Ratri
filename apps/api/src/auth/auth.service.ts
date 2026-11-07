@@ -6,7 +6,7 @@ import * as crypto from 'crypto';
 export class AuthService {
   constructor(private jwtService: JwtService) {}
 
-  async generateGuestSession(roomId: string, memberId: string, _ip: string) {
+  async generateGuestSession(roomId: string, memberId: string, _ip?: string | null) {
     const sessionId = crypto.randomUUID();
     const payload = {
       sid: sessionId,

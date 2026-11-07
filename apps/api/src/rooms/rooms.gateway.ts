@@ -87,6 +87,28 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private clientMemberIds = new Map<string, string>(); // socketId -> memberId
   private roomMemberHistory = new Map<string, Map<string, { name: string; isHost: boolean }>>(); // roomCode -> memberId -> { name, isHost }
   private chillQueueCooldowns = new Map<string, number>(); // socketId -> timestamp
+  private offerRateLimits = new Map<string, { count: number; resetAt: number }>();
+  private answerRateLimits = new Map<string, { count: number; resetAt: number }>();
+  private iceRateLimits = new Map<string, { count: number; resetAt: number }>();
+
+  private checkSignalingRateLimit(
+    tracker: Map<string, { count: number; resetAt: number }>,
+    socketId: string,
+    maxAllowed: number,
+    windowMs: number = 5000
+  ): boolean {
+    const now = Date.now();
+    const entry = tracker.get(socketId);
+    if (!entry || now > entry.resetAt) {
+      tracker.set(socketId, { count: 1, resetAt: now + windowMs });
+      return true;
+    }
+    if (entry.count >= maxAllowed) {
+      return false; // Rate limit exceeded
+    }
+    entry.count++;
+    return true;
+  }
 
   private parseStrictBoolean(val: any): boolean | null {
     if (typeof val === 'boolean') return val;
@@ -205,7 +227,9 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       return { success: false, error: 'INVALID_ROOM_CODE' };
     }
 
-    const rawMemberId = data?.memberId || '';
+    // If socket has verified JWT session from handshake, prioritize verified memberId to prevent spoofing
+    const verifiedMid = client.data.user?.mid;
+    const rawMemberId = verifiedMid || data?.memberId || '';
     const memberId = this.sanitizeString(rawMemberId, 64) || client.id;
     this.clientMemberIds.set(client.id, memberId);
 
@@ -435,6 +459,11 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { targetSocketId: string; offer: any; isScreenShare?: boolean }
   ) {
+    if (!this.checkSignalingRateLimit(this.offerRateLimits, client.id, 10)) {
+      this.logger.warn(`WebRTC offer rate limit exceeded for socket ${client.id}`);
+      return;
+    }
+
     const senderRoomCode = this.getClientRoomCode(client);
     if (!senderRoomCode) return;
 
@@ -476,6 +505,11 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { targetSocketId: string; answer: any }
   ) {
+    if (!this.checkSignalingRateLimit(this.answerRateLimits, client.id, 10)) {
+      this.logger.warn(`WebRTC answer rate limit exceeded for socket ${client.id}`);
+      return;
+    }
+
     const senderRoomCode = this.getClientRoomCode(client);
     if (!senderRoomCode) return;
 
@@ -514,6 +548,11 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { targetSocketId: string; candidate: any }
   ) {
+    if (!this.checkSignalingRateLimit(this.iceRateLimits, client.id, 100)) {
+      this.logger.warn(`WebRTC ICE rate limit exceeded for socket ${client.id}`);
+      return;
+    }
+
     const senderRoomCode = this.getClientRoomCode(client);
     if (!senderRoomCode) return;
 
@@ -867,6 +906,9 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private leaveAllRooms(client: Socket) {
     this.chillQueue = this.chillQueue.filter(q => q.socketId !== client.id);
     this.chillQueueCooldowns.delete(client.id);
+    this.offerRateLimits.delete(client.id);
+    this.answerRateLimits.delete(client.id);
+    this.iceRateLimits.delete(client.id);
     for (const [code, participantsMap] of this.roomParticipants.entries()) {
       if (participantsMap.has(client.id)) {
         const participant = participantsMap.get(client.id);

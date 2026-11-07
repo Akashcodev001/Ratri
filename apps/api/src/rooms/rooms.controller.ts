@@ -17,14 +17,14 @@ export class RoomsController implements OnModuleInit {
 
   onModuleInit() {
     const secret = process.env.IP_HASH_SECRET;
-    if (!secret || secret.trim().length < 16) {
+    if (!secret || Buffer.byteLength(secret, 'utf8') < 32) {
       if (process.env.NODE_ENV === 'production') {
         throw new Error(
-          'FATAL_SECURITY_ERROR: Dedicated IP_HASH_SECRET must be configured with at least 16 characters in production.'
+          'FATAL_SECURITY_ERROR: Dedicated IP_HASH_SECRET must be configured with at least 32 bytes (256 bits) of entropy in production.'
         );
       }
       this.logger.warn(
-        'IP_HASH_SECRET is missing or short. Using local development fallback secret. DO NOT USE IN PRODUCTION.'
+        'IP_HASH_SECRET is missing or short (<32 bytes). Using local development fallback secret. DO NOT USE IN PRODUCTION.'
       );
     }
   }
@@ -64,18 +64,26 @@ export class RoomsController implements OnModuleInit {
     return clean.toLowerCase();
   }
 
-  private hashClientIp(ip: string | undefined): string {
-    const secret =
-      process.env.IP_HASH_SECRET ||
-      (process.env.NODE_ENV !== 'production' ? 'dev-fallback-ip-hash-secret-do-not-use-in-prod' : '');
-    if (!secret) {
-      throw new Error('FATAL_SECURITY_ERROR: Dedicated IP_HASH_SECRET is not configured.');
+  private hashClientIp(ip: string | undefined): string | null {
+    const normalizedIp = this.normalizeClientIp(ip);
+    if (!normalizedIp) {
+      // Missing or unparseable IP is NOT given a pseudo-identity.
+      // Represent unavailable IP as null so distinct clients without IP never collide.
+      return null;
     }
 
-    const normalizedIp = this.normalizeClientIp(ip);
-    // Never silently default missing/invalid IP to 127.0.0.1 (prevents colliding legitimate localhost with unidentifiable clients)
-    const ipPayload = normalizedIp ? `IP:${normalizedIp}` : 'IP:UNAVAILABLE';
-    return crypto.createHmac('sha256', secret).update(ipPayload).digest('hex');
+    const secret =
+      process.env.IP_HASH_SECRET ||
+      (process.env.NODE_ENV !== 'production'
+        ? 'dev-fallback-ip-hash-secret-do-not-use-in-prod-min-32-bytes!'
+        : '');
+    if (!secret || Buffer.byteLength(secret, 'utf8') < 32) {
+      if (process.env.NODE_ENV === 'production') {
+        throw new Error('FATAL_SECURITY_ERROR: Dedicated IP_HASH_SECRET with >= 32 bytes is required in production.');
+      }
+    }
+
+    return crypto.createHmac('sha256', secret).update(`IP:${normalizedIp}`).digest('hex');
   }
 
   @Post()

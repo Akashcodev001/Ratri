@@ -46,7 +46,7 @@ export class RoomsService implements OnModuleInit, OnModuleDestroy {
     return result;
   }
 
-  async createRoom(createDto: { name: string; personality: string; ipHash: string }): Promise<Room> {
+  async createRoom(createDto: { name: string; personality: string; ipHash?: string | null }): Promise<Room> {
     const roomCode = this.generateRoomCode();
     
     // Default settings
@@ -75,7 +75,7 @@ export class RoomsService implements OnModuleInit, OnModuleDestroy {
       settings,
       expiresAt,
       purgeAt,
-      createdByIpHash: createDto.ipHash,
+      createdByIpHash: createDto.ipHash || null,
     });
 
     return newRoom.save();

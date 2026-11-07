@@ -7,6 +7,15 @@ import helmet from 'helmet';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   
+  // Configure trusted reverse proxy hops (e.g. Render / Cloudflare / Vercel Edge)
+  // Trusting 1 proxy hop ensures req.ip resolves to the real client IP provided by Render's proxy
+  // without blindly trusting spoofed X-Forwarded-For headers injected by untrusted clients.
+  const httpAdapter = app.getHttpAdapter();
+  if (httpAdapter && typeof (httpAdapter.getInstance() as any)?.set === 'function') {
+    const trustProxyConfig = process.env.TRUST_PROXY ? Number(process.env.TRUST_PROXY) || process.env.TRUST_PROXY : 1;
+    (httpAdapter.getInstance() as any).set('trust proxy', trustProxyConfig);
+  }
+
   // Dynamic Origin Validator (Environment-driven, 12-factor standard)
   const isOriginAllowed = (origin: string | undefined): boolean => {
     if (!origin) return true; // Allow same-origin, server-to-server, curl, health checks
