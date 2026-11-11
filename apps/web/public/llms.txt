@@ -1,0 +1,25 @@
+# Ratri
+
+> Ratri is a real-time social room platform for watching videos, listening to music, sharing screens, and talking with friends online.
+
+## About
+
+Ratri lets people create instant browser rooms without mandatory account creation. Rooms support synchronized media playback, WebRTC voice and video, text chat, reactions, and screen sharing.
+
+## Public pages
+
+- [Home](https://ratri-silk.vercel.app/): Overview of Ratri and its social room features.
+- [Watch together](https://ratri-silk.vercel.app/watch-together): Synchronized video watching with friends.
+- [Watch party](https://ratri-silk.vercel.app/watch-party): Virtual watch parties with chat and reactions.
+- [Screen share](https://ratri-silk.vercel.app/screen-share): Real-time browser, application, and screen sharing.
+- [Listen together](https://ratri-silk.vercel.app/listen-together): Shared music and audio lounges.
+
+## Important limitations
+
+- Ratri is not a movie streaming, piracy, or download service.
+- Room URLs are private session destinations and should not be indexed.
+- Ratri does not claim ownership of user-provided media.
+
+## Source
+
+- [Ratri on GitHub](https://github.com/Akashcodev001/Ratri)

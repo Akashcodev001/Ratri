@@ -8,5 +8,6 @@ export class CreateRoomDto {
 
   @IsString()
   @IsOptional()
+  @MaxLength(24)
   personality?: string;
 }

@@ -6,6 +6,7 @@ import { SmartSuspense } from "./components/loading/SmartSuspense";
 import { HomeSkeleton } from "./components/skeletons/HomeSkeleton";
 import { RoomSkeleton } from "./components/skeletons/RoomSkeleton";
 import { RatriIntro } from "./components/intro";
+import { GoogleAnalytics } from "./components/analytics/GoogleAnalytics";
 
 // Route-level Code Splitting for Production Bundle Optimization
 const Home = React.lazy(() => import("./routes/Home").then(m => ({ default: m.Home })));
@@ -76,6 +77,7 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, Error
 function Layout() {
   return (
     <div className="min-h-screen bg-[hsl(var(--bg))] text-[hsl(var(--text))] flex flex-col font-sans transition-colors duration-300">
+      <GoogleAnalytics />
       <Header />
       <div className="flex-1">
         <ErrorBoundary>

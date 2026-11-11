@@ -60,13 +60,14 @@ export function SeoHead({
     setMetaTag('meta[property="og:url"]', 'property', 'og:url', fullCanonical);
     setMetaTag('meta[property="og:type"]', 'property', 'og:type', ogType);
     setMetaTag('meta[property="og:image"]', 'property', 'og:image', resolvedOgImage);
+    setMetaTag('meta[property="og:site_name"]', 'property', 'og:site_name', 'Ratri');
 
     // 4. Twitter Cards
-    setMetaTag('meta[property="twitter:card"]', 'property', 'twitter:card', 'summary_large_image');
-    setMetaTag('meta[property="twitter:title"]', 'property', 'twitter:title', title);
-    setMetaTag('meta[property="twitter:description"]', 'property', 'twitter:description', description);
-    setMetaTag('meta[property="twitter:url"]', 'property', 'twitter:url', fullCanonical);
-    setMetaTag('meta[property="twitter:image"]', 'property', 'twitter:image', resolvedOgImage);
+    setMetaTag('meta[name="twitter:card"]', 'name', 'twitter:card', 'summary_large_image');
+    setMetaTag('meta[name="twitter:title"]', 'name', 'twitter:title', title);
+    setMetaTag('meta[name="twitter:description"]', 'name', 'twitter:description', description);
+    setMetaTag('meta[name="twitter:url"]', 'name', 'twitter:url', fullCanonical);
+    setMetaTag('meta[name="twitter:image"]', 'name', 'twitter:image', resolvedOgImage);
 
     // 5. Dynamic JSON-LD Structured Data
     const scriptId = 'dynamic-json-ld';

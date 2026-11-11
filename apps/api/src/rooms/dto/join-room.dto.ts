@@ -9,5 +9,6 @@ export class JoinRoomDto {
 
   @IsString()
   @IsOptional()
+  @MaxLength(128)
   password?: string;
 }
