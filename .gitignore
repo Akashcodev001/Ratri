@@ -17,6 +17,19 @@ node_modules/
 *.pem
 *.key
 *.crt
+*.cer
+*.der
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.token
+*.secret
+*.credentials
+*.password
+*.jwt
+id_rsa*
+.netrc
 credentials.json
 secrets.json
 
@@ -76,3 +89,5 @@ docs/*
 **/*.md
 !README.md
 !**/README.md
+# Generated local audit reports
+SEO_DEPLOYMENT_REPORT.md
