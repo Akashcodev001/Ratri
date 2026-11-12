@@ -51,17 +51,8 @@ export function Header() {
 
           {/* Navigation Links for SEO & Internal Linking */}
           <nav aria-label="Main Navigation" className="hidden sm:flex items-center gap-4 text-xs font-semibold text-[hsl(var(--text-secondary))]">
-            <Link to="/watch-together" className="hover:text-[hsl(var(--text))] transition-colors">
-              Watch Together
-            </Link>
-            <Link to="/watch-party" className="hover:text-[hsl(var(--text))] transition-colors">
-              Watch Party
-            </Link>
-            <Link to="/screen-share" className="hover:text-[hsl(var(--text))] transition-colors">
-              Screen Share
-            </Link>
-            <Link to="/listen-together" className="hover:text-[hsl(var(--text))] transition-colors">
-              Music Lounge
+            <Link to="/features" className="hover:text-[hsl(var(--text))] transition-colors">
+              Features
             </Link>
           </nav>
 
@@ -80,20 +71,8 @@ export function Header() {
       {/* Mobile Sub-Navigation for Crawlability & Quick Access */}
       {!isInRoom && (
         <nav aria-label="Mobile Secondary Navigation" className="sm:hidden border-b border-[hsl(var(--border))] bg-[hsl(var(--surface-sunken)/0.8)] px-4 py-2 flex items-center justify-between text-[11px] font-semibold text-[hsl(var(--text-secondary))] overflow-x-auto gap-2">
-          <Link to="/watch-together" className="hover:text-[hsl(var(--text))] transition-colors whitespace-nowrap px-1 py-0.5">
-            Watch Together
-          </Link>
-          <span className="text-[hsl(var(--border-strong))]">•</span>
-          <Link to="/watch-party" className="hover:text-[hsl(var(--text))] transition-colors whitespace-nowrap px-1 py-0.5">
-            Watch Party
-          </Link>
-          <span className="text-[hsl(var(--border-strong))]">•</span>
-          <Link to="/screen-share" className="hover:text-[hsl(var(--text))] transition-colors whitespace-nowrap px-1 py-0.5">
-            Screen Share
-          </Link>
-          <span className="text-[hsl(var(--border-strong))]">•</span>
-          <Link to="/listen-together" className="hover:text-[hsl(var(--text))] transition-colors whitespace-nowrap px-1 py-0.5">
-            Music Lounge
+          <Link to="/features" className="hover:text-[hsl(var(--text))] transition-colors whitespace-nowrap px-1 py-0.5">
+            Features
           </Link>
         </nav>
       )}

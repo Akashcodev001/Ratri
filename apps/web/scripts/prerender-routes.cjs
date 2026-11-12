@@ -22,10 +22,7 @@ const sharedHeaderHtml = `
       <span class="font-display font-extrabold text-lg tracking-tight">RATRI</span>
     </a>
     <nav aria-label="Main Navigation" class="hidden sm:flex items-center gap-4 text-xs font-semibold text-[hsl(var(--text-secondary))]">
-      <a href="/watch-together" class="hover:text-[hsl(var(--text))] transition-colors">Watch Together</a>
-      <a href="/watch-party" class="hover:text-[hsl(var(--text))] transition-colors">Watch Party</a>
-      <a href="/screen-share" class="hover:text-[hsl(var(--text))] transition-colors">Screen Share</a>
-      <a href="/listen-together" class="hover:text-[hsl(var(--text))] transition-colors">Music Lounge</a>
+      <a href="/features" class="hover:text-[hsl(var(--text))] transition-colors">Features</a>
     </nav>
     <div class="flex items-center gap-2 text-xs font-medium text-[hsl(var(--text-secondary))]">
       <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
@@ -34,13 +31,7 @@ const sharedHeaderHtml = `
   </div>
 </header>
 <nav aria-label="Mobile Navigation" class="sm:hidden border-b border-[hsl(var(--border))] bg-[hsl(var(--surface-sunken)/0.8)] px-4 py-2 flex items-center justify-between text-[11px] font-semibold text-[hsl(var(--text-secondary))] overflow-x-auto gap-2">
-  <a href="/watch-together" class="whitespace-nowrap px-1 py-0.5 hover:text-[hsl(var(--text))]">Watch Together</a>
-  <span class="text-[hsl(var(--border-strong))]">•</span>
-  <a href="/watch-party" class="whitespace-nowrap px-1 py-0.5 hover:text-[hsl(var(--text))]">Watch Party</a>
-  <span class="text-[hsl(var(--border-strong))]">•</span>
-  <a href="/screen-share" class="whitespace-nowrap px-1 py-0.5 hover:text-[hsl(var(--text))]">Screen Share</a>
-  <span class="text-[hsl(var(--border-strong))]">•</span>
-  <a href="/listen-together" class="whitespace-nowrap px-1 py-0.5 hover:text-[hsl(var(--text))]">Music Lounge</a>
+  <a href="/features" class="whitespace-nowrap px-1 py-0.5 hover:text-[hsl(var(--text))]">Features</a>
 </nav>
 `;
 
@@ -64,19 +55,19 @@ const sharedFooterHtml = `
     <div class="md:col-span-2 space-y-3">
       <h4 class="font-extrabold uppercase tracking-wider text-[hsl(var(--text))]">Room Modes</h4>
       <ul class="space-y-2 font-medium">
-        <li><a href="/watch-party" class="hover:text-[hsl(var(--accent))] transition-colors">🍿 Watch Party</a></li>
-        <li><a href="/watch-together" class="hover:text-[hsl(var(--accent))] transition-colors">📺 Watch Together</a></li>
-        <li><a href="/screen-share" class="hover:text-[hsl(var(--accent))] transition-colors">🖥️ Screen Share</a></li>
-        <li><a href="/listen-together" class="hover:text-[hsl(var(--accent))] transition-colors">🎵 Song Lounge</a></li>
+        <li><a href="/features#watch-parties" class="hover:text-[hsl(var(--accent))] transition-colors">🍿 Watch Party</a></li>
+        <li><a href="/features#watch-videos" class="hover:text-[hsl(var(--accent))] transition-colors">📺 Watch Together</a></li>
+        <li><a href="/features#screen-sharing" class="hover:text-[hsl(var(--accent))] transition-colors">🖥️ Screen Share</a></li>
+        <li><a href="/features#music-lounges" class="hover:text-[hsl(var(--accent))] transition-colors">🎵 Song Lounge</a></li>
       </ul>
     </div>
     <div class="md:col-span-2 space-y-3">
       <h4 class="font-extrabold uppercase tracking-wider text-[hsl(var(--text))]">Features</h4>
       <ul class="space-y-2 font-medium">
-        <li><a href="/watch-together" class="hover:text-[hsl(var(--accent))] transition-colors">Frame Sync Engine</a></li>
-        <li><a href="/watch-party" class="hover:text-[hsl(var(--accent))] transition-colors">WebRTC Mesh VC</a></li>
-        <li><a href="/screen-share" class="hover:text-[hsl(var(--accent))] transition-colors">Screen Sharing</a></li>
-        <li><a href="/listen-together" class="hover:text-[hsl(var(--accent))] transition-colors">Music Lounges</a></li>
+        <li><a href="/features#watch-videos" class="hover:text-[hsl(var(--accent))] transition-colors">Frame Sync Engine</a></li>
+        <li><a href="/features#watch-parties" class="hover:text-[hsl(var(--accent))] transition-colors">WebRTC Mesh VC</a></li>
+        <li><a href="/features#screen-sharing" class="hover:text-[hsl(var(--accent))] transition-colors">Screen Sharing</a></li>
+        <li><a href="/features#music-lounges" class="hover:text-[hsl(var(--accent))] transition-colors">Music Lounges</a></li>
         <li><a href="/" class="hover:text-[hsl(var(--accent))] transition-colors">Instant Guest Join</a></li>
       </ul>
     </div>
@@ -94,13 +85,13 @@ const sharedFooterHtml = `
   <div class="pt-6 border-t border-[hsl(var(--border))] flex flex-col sm:flex-row items-center justify-between gap-4 font-medium">
     <div>&copy; 2026 RATRI Real-Time Social Platform. All rights reserved.</div>
     <div class="flex flex-wrap items-center justify-center gap-4 text-[hsl(var(--text-muted))]">
-      <a href="/watch-together" class="hover:text-[hsl(var(--text))]">Watch Together</a>
+      <a href="/features#watch-videos" class="hover:text-[hsl(var(--text))]">Watch Together</a>
       <span>•</span>
-      <a href="/watch-party" class="hover:text-[hsl(var(--text))]">Watch Party</a>
+      <a href="/features#watch-parties" class="hover:text-[hsl(var(--text))]">Watch Party</a>
       <span>•</span>
-      <a href="/screen-share" class="hover:text-[hsl(var(--text))]">Screen Share</a>
+      <a href="/features#screen-sharing" class="hover:text-[hsl(var(--text))]">Screen Share</a>
       <span>•</span>
-      <a href="/listen-together" class="hover:text-[hsl(var(--text))]">Music Lounge</a>
+      <a href="/features#music-lounges" class="hover:text-[hsl(var(--text))]">Music Lounge</a>
     </div>
   </div>
 </footer>
@@ -533,8 +524,61 @@ const routes = [
       ${sharedFooterHtml}
     </div>
     `
+  },
+  {
+    path: 'features',
+    title: 'Ratri Features — Watch, Share, Listen and Hang Out Together',
+    description: 'Explore everything Ratri offers: synchronized video watching, virtual watch parties, WebRTC screen sharing, music lounges, voice chat, and private guest rooms.',
+    canonical: 'https://ratri-silk.vercel.app/features',
+    jsonLd: {
+      '@context': 'https://schema.org',
+      '@type': 'CollectionPage',
+      name: 'Ratri Features',
+      url: 'https://ratri-silk.vercel.app/features',
+      description: 'Explore Ratri features for synchronized video watching, online watch parties, screen sharing, music lounges, voice chat, and private guest rooms.'
+    },
+    bodyContent: `
+    <div class="min-h-screen bg-[hsl(var(--bg))] text-[hsl(var(--text))] flex flex-col font-sans">
+      ${sharedHeaderHtml}
+      <main class="flex-1 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-16 text-left">
+        <section class="text-center space-y-6 max-w-3xl mx-auto">
+          <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[hsl(var(--accent)/0.1)] border border-[hsl(var(--accent)/0.2)] text-[hsl(var(--accent))] text-xs font-semibold uppercase tracking-wider">
+            One social room for everything
+          </div>
+          <h1 class="text-3xl sm:text-5xl font-extrabold tracking-tight leading-tight">Everything you can do with Ratri</h1>
+          <p class="text-sm sm:text-base text-[hsl(var(--text-secondary))] leading-relaxed">
+            Ratri gives friends one private browser room for watching videos, talking, sharing screens, listening to music, and hanging out together. No downloads or mandatory accounts.
+          </p>
+          <a href="/" class="inline-flex items-center gap-2 px-6 py-3.5 bg-[hsl(var(--accent))] text-white font-bold text-sm rounded-xl shadow-lg">Create an instant room &rarr;</a>
+        </section>
+        <section class="grid grid-cols-1 md:grid-cols-2 gap-6" aria-label="Ratri features">
+          <article class="p-7 rounded-2xl border border-[hsl(var(--border))] space-y-4">
+            <h2 class="text-xl font-bold">Watch videos together</h2>
+            <p class="text-sm text-[hsl(var(--text-secondary))] leading-relaxed">Create a private room, share a video link, and keep playback synchronized for everyone in the room.</p>
+            <a href="/features#watch-videos" class="text-sm font-bold text-[hsl(var(--accent))]">Explore watch together &rarr;</a>
+          </article>
+          <article class="p-7 rounded-2xl border border-[hsl(var(--border))] space-y-4">
+            <h2 class="text-xl font-bold">Host watch parties</h2>
+            <p class="text-sm text-[hsl(var(--text-secondary))] leading-relaxed">Bring friends together for remote movie nights with live reactions, text chat, and voice or video conversation.</p>
+            <a href="/features#watch-parties" class="text-sm font-bold text-[hsl(var(--accent))]">Explore watch parties &rarr;</a>
+          </article>
+          <article class="p-7 rounded-2xl border border-[hsl(var(--border))] space-y-4">
+            <h2 class="text-xl font-bold">Share your screen</h2>
+            <p class="text-sm text-[hsl(var(--text-secondary))] leading-relaxed">Stream a browser tab, application window, presentation, or game with low-latency WebRTC video and audio.</p>
+            <a href="/features#screen-sharing" class="text-sm font-bold text-[hsl(var(--accent))]">Explore screen sharing &rarr;</a>
+          </article>
+          <article class="p-7 rounded-2xl border border-[hsl(var(--border))] space-y-4">
+            <h2 class="text-xl font-bold">Listen and chill together</h2>
+            <p class="text-sm text-[hsl(var(--text-secondary))] leading-relaxed">Use shared music lounges with synchronized audio, shared queues, spatial voice chat, and custom atmospheres.</p>
+            <a href="/features#music-lounges" class="text-sm font-bold text-[hsl(var(--accent))]">Explore music lounges &rarr;</a>
+          </article>
+        </section>
+      </main>
+      ${sharedFooterHtml}
+    </div>
+    `
   }
-];
+].filter((route) => route.path === '' || route.path === 'features');
 
 routes.forEach((route) => {
   let html = baseHtml;
@@ -586,4 +630,4 @@ routes.forEach((route) => {
   }
 });
 
-console.log('[prerender] Successfully generated full semantic static HTML for all 5 public routes!');
+console.log('[prerender] Successfully generated full semantic static HTML for all public routes!');

@@ -68,9 +68,8 @@ function testLocalFiles() {
   console.log('SPA fallback excludes SEO files:', spaExcludesSeoFiles ? 'YES' : 'FAIL');
   const rHeader = vercel.headers.find(h => h.source === '/r/(.*)');
   console.log('\nVercel /r/* X-Robots-Tag configured:', rHeader ? JSON.stringify(rHeader.headers) : 'FAIL');
-
   const localChecksPassed =
-    sitemapLocs.length === 5 &&
+    sitemapLocs.length === 2 &&
     sitemapLocs.every((loc) => loc.startsWith('https://ratri-silk.vercel.app/')) &&
     sitemapLocs.every((loc) => !loc.includes('/r/')) &&
     sitemapDatesValid &&
@@ -90,10 +89,7 @@ function testLocalFiles() {
 
 const liveUrls = [
   'https://ratri-silk.vercel.app/',
-  'https://ratri-silk.vercel.app/watch-together',
-  'https://ratri-silk.vercel.app/watch-party',
-  'https://ratri-silk.vercel.app/screen-share',
-  'https://ratri-silk.vercel.app/listen-together',
+  'https://ratri-silk.vercel.app/features',
   'https://ratri-silk.vercel.app/hero_showcase.jpg',
   'https://ratri-silk.vercel.app/robots.txt',
   'https://ratri-silk.vercel.app/sitemap.xml',

@@ -11,10 +11,7 @@ import { GoogleAnalytics } from "./components/analytics/GoogleAnalytics";
 // Route-level Code Splitting for Production Bundle Optimization
 const Home = React.lazy(() => import("./routes/Home").then(m => ({ default: m.Home })));
 const Room = React.lazy(() => import("./routes/Room").then(m => ({ default: m.Room })));
-const WatchTogether = React.lazy(() => import("./routes/WatchTogether").then(m => ({ default: m.WatchTogether })));
-const WatchParty = React.lazy(() => import("./routes/WatchParty").then(m => ({ default: m.WatchParty })));
-const ScreenShareLanding = React.lazy(() => import("./routes/ScreenShareLanding").then(m => ({ default: m.ScreenShareLanding })));
-const ListenTogether = React.lazy(() => import("./routes/ListenTogether").then(m => ({ default: m.ListenTogether })));
+const Features = React.lazy(() => import("./routes/Features").then(m => ({ default: m.Features })));
 const NotFound = React.lazy(() => import("./routes/NotFound").then(m => ({ default: m.NotFound })));
 
 // Prefetch helper for seamless room transition
@@ -101,34 +98,10 @@ const router = createBrowserRouter([
         ),
       },
       {
-        path: "/watch-together",
+        path: "/features",
         element: (
           <SmartSuspense fallback={<HomeSkeleton />}>
-            <WatchTogether />
-          </SmartSuspense>
-        ),
-      },
-      {
-        path: "/watch-party",
-        element: (
-          <SmartSuspense fallback={<HomeSkeleton />}>
-            <WatchParty />
-          </SmartSuspense>
-        ),
-      },
-      {
-        path: "/screen-share",
-        element: (
-          <SmartSuspense fallback={<HomeSkeleton />}>
-            <ScreenShareLanding />
-          </SmartSuspense>
-        ),
-      },
-      {
-        path: "/listen-together",
-        element: (
-          <SmartSuspense fallback={<HomeSkeleton />}>
-            <ListenTogether />
+            <Features />
           </SmartSuspense>
         ),
       },

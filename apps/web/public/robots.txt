@@ -2,10 +2,7 @@
 # Note: robots.txt is a crawl-budget and discovery control, not an access-control or security boundary.
 User-agent: *
 Allow: /
-Allow: /watch-together
-Allow: /watch-party
-Allow: /screen-share
-Allow: /listen-together
+Allow: /features
 Disallow: /r/
 Disallow: /v1/
 
