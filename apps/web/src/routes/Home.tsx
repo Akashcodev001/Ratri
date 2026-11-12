@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { ChillMatchModal } from "../components/ChillMatchModal";
@@ -682,58 +682,8 @@ export function Home() {
             </div>
           </div>
 
-          {/* Column 2: Room Modes */}
-          <div className="md:col-span-2 space-y-3">
-            <h4 className="text-xs font-extrabold uppercase tracking-wider text-[hsl(var(--text))]">Room Modes</h4>
-            <ul className="space-y-2 text-xs text-[hsl(var(--text-secondary))] font-medium">
-              <li>
-                <Link to="/features" className="hover:text-[hsl(var(--accent))] transition-colors flex items-center gap-1.5">
-                  <span>🍿 Watch Party</span>
-                </Link>
-              </li>
-              <li>
-                <Link to="/features" className="hover:text-[hsl(var(--accent))] transition-colors flex items-center gap-1.5">
-                  <span>📺 Watch Together</span>
-                </Link>
-              </li>
-              <li>
-                <Link to="/features" className="hover:text-[hsl(var(--accent))] transition-colors flex items-center gap-1.5">
-                  <span>🖥️ Screen Share</span>
-                </Link>
-              </li>
-              <li>
-                <Link to="/features" className="hover:text-[hsl(var(--accent))] transition-colors flex items-center gap-1.5">
-                  <span>🎵 Song Lounge</span>
-                  <span className="text-[9px] px-1.5 py-0.2 rounded bg-rose-500/15 text-rose-400 font-bold border border-rose-500/25 uppercase">Soon</span>
-                </Link>
-              </li>
-            </ul>
-          </div>
-
-          {/* Column 3: Features */}
-          <div className="md:col-span-2 space-y-3">
-            <h4 className="text-xs font-extrabold uppercase tracking-wider text-[hsl(var(--text))]">Features</h4>
-            <ul className="space-y-2 text-xs text-[hsl(var(--text-secondary))] font-medium">
-              <li>
-                <Link to="/features" className="hover:text-[hsl(var(--accent))] transition-colors">Frame Sync Engine</Link>
-              </li>
-              <li>
-                <Link to="/features" className="hover:text-[hsl(var(--accent))] transition-colors">WebRTC Mesh VC</Link>
-              </li>
-              <li>
-                <Link to="/features" className="hover:text-[hsl(var(--accent))] transition-colors">Screen Sharing</Link>
-              </li>
-              <li>
-                <Link to="/features" className="hover:text-[hsl(var(--accent))] transition-colors">Music Lounges</Link>
-              </li>
-              <li>
-                <Link to="/" className="hover:text-[hsl(var(--accent))] transition-colors">Instant Guest Join</Link>
-              </li>
-            </ul>
-          </div>
-
-          {/* Column 4: Resources & Social */}
-          <div className="md:col-span-3 space-y-3">
+          {/* Column 2: Resources & Social */}
+          <div className="md:col-span-3 md:col-start-10 space-y-3">
             <h4 className="text-xs font-extrabold uppercase tracking-wider text-[hsl(var(--text))]">Connect & Support</h4>
             <p className="text-xs text-[hsl(var(--text-secondary))] leading-relaxed">
               Open-source real-time application architecture built for high performance and community interaction.
@@ -783,15 +733,6 @@ export function Home() {
             <span>by <strong className="text-[hsl(var(--accent))] font-extrabold tracking-wide">ak</strong></span>
           </div>
 
-          <div className="flex flex-wrap items-center justify-center gap-4 text-xs text-[hsl(var(--text-muted))]">
-            <Link to="/features" className="hover:text-[hsl(var(--text))] transition-colors">Features</Link>
-            <span>•</span>
-            <Link to="/features" className="hover:text-[hsl(var(--text))] transition-colors">Watch Party</Link>
-            <span>•</span>
-            <Link to="/features" className="hover:text-[hsl(var(--text))] transition-colors">Screen Share</Link>
-            <span>•</span>
-            <Link to="/features" className="hover:text-[hsl(var(--text))] transition-colors">Music Lounge</Link>
-          </div>
         </div>
 
       </footer>
