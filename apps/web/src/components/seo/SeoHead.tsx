@@ -8,7 +8,7 @@ export interface SeoHeadProps {
   noindex?: boolean;
   ogType?: string;
   ogImage?: string;
-  jsonLd?: Record<string, any> | Record<string, any>[];
+  jsonLd?: Record<string, unknown> | Record<string, unknown>[];
 }
 
 export function SeoHead({
@@ -61,6 +61,8 @@ export function SeoHead({
     setMetaTag('meta[property="og:type"]', 'property', 'og:type', ogType);
     setMetaTag('meta[property="og:image"]', 'property', 'og:image', resolvedOgImage);
     setMetaTag('meta[property="og:site_name"]', 'property', 'og:site_name', 'Ratri');
+    setMetaTag('meta[property="og:locale"]', 'property', 'og:locale', 'en_US');
+    setMetaTag('meta[property="og:image:alt"]', 'property', 'og:image:alt', `${title} - Ratri`);
 
     // 4. Twitter Cards
     setMetaTag('meta[name="twitter:card"]', 'name', 'twitter:card', 'summary_large_image');
